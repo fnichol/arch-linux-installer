@@ -13,7 +13,7 @@ $author
 Arch Linux with ZFS installer.
 
 USAGE:
-        $program [FLAGS] [OPTIONS] <DISK>
+        $program [FLAGS] [OPTIONS] <DISK> <NETIF>
 
 COMMON FLAGS:
     -h  Prints this message
@@ -21,6 +21,7 @@ COMMON FLAGS:
 
 ARGS:
     <DISK>      The disk to use for installation (ex: \`sda')
+    <NETIF>     The network interface to setup for DHCP (ex: \`ens33')
 
 "
 }
@@ -156,6 +157,10 @@ next}1' /mnt/boot/grub/grub.cfg
 
   info "Enable systemd ZFS service"
   in_chroot "systemctl enable zfs.target"
+  in_chroot "systemctl enable zfs-mount"
+
+  info "Enabling DHCP networking on $netif"
+  in_chroot "systemctl enable dhcpcd@${netif}.service"
 }
 
 install_grub() {
@@ -222,6 +227,13 @@ if [ -z "${1:-}" ]; then
   exit_with "Required argument: <DISK>" 2
 fi
 disk="$1"
+shift
+
+if [ -z "${1:-}" ]; then
+  print_help
+  exit_with "Required argument: <NETIF>" 2
+fi
+netif="$1"
 shift
 
 main
