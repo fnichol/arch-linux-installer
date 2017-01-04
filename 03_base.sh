@@ -99,6 +99,7 @@ main() {
   curl 'https://www.archlinux.org/mirrorlist/?country=CA&country=US&protocol=http&ip_version=4' -o /etc/pacman.d/mirrorlist.new
   sed -i 's/^#Server/Server/' /etc/pacman.d/mirrorlist.new
   rankmirrors -n 6 /etc/pacman.d/mirrorlist.new > /etc/pacman.d/mirrorlist
+  rm -f /etc/pacman.d/mirrorlist.new
   pacman -Syyu
 
   info "Installing software"
