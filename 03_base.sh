@@ -109,6 +109,7 @@ main() {
     git \
     htop \
     mosh \
+    rsync \
     tmux \
     tree \
     vim \
