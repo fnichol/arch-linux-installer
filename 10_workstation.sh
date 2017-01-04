@@ -103,11 +103,11 @@ EOF
     pacman-key --lsign-key 962DDE58
 
     info "Refreshing package list and upgrading"
-    pacman -Syyu
+    pacman -Syyu --noconfirm
   fi
 
   info "Installing much better font rendering"
-  pacman -S --noconfirm \
+  pacman -S \
     infinality-bundle \
     ibfonts-meta-base \
     ttf-overpass-fonts-ibx \

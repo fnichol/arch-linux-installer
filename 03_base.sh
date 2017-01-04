@@ -91,7 +91,7 @@ main() {
   hostname "$hostname"
 
   info "Updating system"
-  pacman -Syu
+  pacman -Syu --noconfirm
 
   # * https://wiki.archlinux.org/index.php/Mirrors
   info "Calculating fastest mirrors"
