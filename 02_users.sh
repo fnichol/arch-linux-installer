@@ -59,7 +59,7 @@ main() {
   info "Setting sudoers policy"
   echo "%wheel ALL=(ALL) ALL" > /etc/sudoers.d/01_wheel
 
-  # rm -f /etc/skel/.bashrc
+  rm -f /etc/skel/.bashrc
 
   info "Creating $admin user"
   zfs create "tank/home/$admin"
