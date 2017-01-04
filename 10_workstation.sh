@@ -58,6 +58,7 @@ is_in_vmware() {
 
 main() {
   if is_in_vmware; then
+    info "Installing VMware-specific software"
     pacman -S --noconfirm \
       gtkmm \
       libxtst \
@@ -70,10 +71,51 @@ main() {
     systemctl enable vmware-vmblock-fuse.service
   fi
 
+  info "Installing X, a window manager, and utilities"
   pacman -S --noconfirm \
+    dmenu \
+    i3 \
+    termite \
     xf86-input-evdev \
     xorg-server \
     xorg-xinit
+
+  info "Creating default xinitrc for startx"
+  local xi=/etc/X11/xinit/xinitrc
+  rm -f "$xi"
+  touch "$xi"
+  if is_in_vmware; then
+    echo "/usr/sbin/vmware-user-suid-wrapper" >> "$xi"
+  fi
+  echo "exec i3" >> "$xi"
+
+  if ! grep -q infinality-bundle /etc/pacman.conf > /dev/null; then
+    info "Adding infinality-bundle repositories"
+    cat <<'EOF' >> /etc/pacman.conf
+
+[infinality-bundle]
+Server = http://bohoomil.com/repo/$arch
+
+[infinality-bundle-fonts]
+Server = http://bohoomil.com/repo/fonts
+EOF
+    pacman-key -r 962DDE58
+    pacman-key --lsign-key 962DDE58
+
+    info "Refreshing package list and upgrading"
+    pacman -Syyu
+  fi
+
+  info "Installing much better font rendering"
+  pacman -S --noconfirm \
+    infinality-bundle \
+    ibfonts-meta-base \
+    ttf-overpass-fonts-ibx \
+    otf-inconsolatazi4-ibx
+
+  # lxappearance
+  # rofi
+  # compton
 }
 
 
