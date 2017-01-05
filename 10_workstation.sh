@@ -87,6 +87,7 @@ main() {
   if is_in_vmware; then
     echo "/usr/sbin/vmware-user-suid-wrapper" >> "$xi"
   fi
+  echo "xset r rate 200 30" >> "$xi"
   echo "exec i3" >> "$xi"
 
   if ! grep -q infinality-bundle /etc/pacman.conf > /dev/null; then
