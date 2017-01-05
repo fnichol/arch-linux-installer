@@ -65,14 +65,41 @@ main() {
   tz="America/Edmonton"
   info "Setting up timezone to $tz"
   timedatectl set-timezone "$tz"
-  timedatectl set-ntp true
 
   # If hardware clock is set to local time, like in VMware Fusion
   #
   # * http://www.linuxfromscratch.org/lfs/view/stable-systemd/chapter07/clock.html
   if is_in_vmware; then
+    info "Installing VMware-specific software"
+    pacman -S --noconfirm open-vm-tools
+    systemctl start vmtoolsd.service
+    systemctl enable vmtoolsd.service
+
     info "Setting time adjustment due to local time in hardware clock"
     timedatectl set-local-rtc 1
+
+    info "Enabling timesync"
+    vmware-toolbox-cmd timesync enable
+
+    info "Creating service unit to update clock after sleep"
+    cat <<'EOF' > /etc/systemd/system/hwclock-resume.service
+[Unit]
+Description=Update hardware clock after resuming from sleep
+After=suspend.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/hwclock --hctosys --utc
+
+[Install]
+WantedBy=suspend.target
+EOF
+    systemctl daemon-reload
+    systemctl start hwclock-resume.service
+    systemctl enable hwclock-resume.service
+  else
+    info "Enabling ntp"
+    timedatectl set-ntp true
   fi
 
   locales=(en_CA.UTF-8 en_US.UTF-8 en_US)

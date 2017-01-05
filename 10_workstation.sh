@@ -63,7 +63,6 @@ main() {
       gtkmm \
       libxtst \
       mesa-libgl \
-      open-vm-tools \
       xf86-input-vmmouse \
       xf86-video-vmware
 
