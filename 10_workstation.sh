@@ -89,29 +89,29 @@ main() {
   echo "xset r rate 200 30" >> "$xi"
   echo "exec i3" >> "$xi"
 
-  if ! grep -q infinality-bundle /etc/pacman.conf > /dev/null; then
-    info "Adding infinality-bundle repositories"
-    cat <<'EOF' >> /etc/pacman.conf
+  # if ! grep -q infinality-bundle /etc/pacman.conf > /dev/null; then
+  #   info "Adding infinality-bundle repositories"
+  #   cat <<'EOF' >> /etc/pacman.conf
 
-[infinality-bundle]
-Server = http://bohoomil.com/repo/$arch
+# [infinality-bundle]
+# Server = http://bohoomil.com/repo/$arch
 
-[infinality-bundle-fonts]
-Server = http://bohoomil.com/repo/fonts
-EOF
-    pacman-key -r 962DDE58
-    pacman-key --lsign-key 962DDE58
+# [infinality-bundle-fonts]
+# Server = http://bohoomil.com/repo/fonts
+# EOF
+  #   pacman-key -r 962DDE58
+  #   pacman-key --lsign-key 962DDE58
 
-    info "Refreshing package list and upgrading"
-    pacman -Syyu --noconfirm
-  fi
+  #   info "Refreshing package list and upgrading"
+  #   pacman -Syyu --noconfirm
+  # fi
 
-  info "Installing much better font rendering"
-  pacman -S \
-    infinality-bundle \
-    ibfonts-meta-base \
-    ttf-overpass-fonts-ibx \
-    otf-inconsolatazi4-ibx
+  # info "Installing much better font rendering"
+  # pacman -S \
+  #   infinality-bundle \
+  #   ibfonts-meta-base \
+  #   ttf-overpass-fonts-ibx \
+  #   otf-inconsolatazi4-ibx
 
   # lxappearance
   # rofi
