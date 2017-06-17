@@ -129,6 +129,15 @@ EOF
   rm -f /etc/pacman.d/mirrorlist.new
   pacman -Syyu
 
+  info "Adding repository for Yaourt"
+  cat <<'EOF' >> /etc/pacman.conf
+
+[archlinuxfr]
+SigLevel = Never
+Server = http://repo.archlinux.fr/$arch
+EOF
+  pacman -Sy --noconfirm
+
   info "Installing software"
   pacman -S --noconfirm \
     ack \
@@ -140,7 +149,8 @@ EOF
     tmux \
     tree \
     vim \
-    wget
+    wget \
+    yaourt
 
   info "Installing fnichol/bashrc"
   curl https://raw.githubusercontent.com/fnichol/bashrc/master/contrib/install-system-wide -o /tmp/install.sh
