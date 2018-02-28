@@ -60,7 +60,7 @@ main() {
   if is_in_vmware; then
     info "Installing VMware-specific software"
     pacman -S --noconfirm \
-      gtkmm \
+      gtkmm3 \
       libxtst \
       mesa-libgl \
       xf86-input-vmmouse \
