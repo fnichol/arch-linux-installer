@@ -20,3 +20,17 @@
 
 * [i3wm: How To "Rice" Your Desktop](https://www.youtube.com/watch?v=ARKIwOlazKI&t=612s)
 * [Improving my terminal emulator](https://www.mattwall.co.uk/2015/01/31/Improving-my-terminal-emulator.html)
+
+## Custom Version of Kernel
+
+If the version of `archzfs-linux` requires an older version of `linux` and `linux-headers` you can download an older version of each of these from the rolling release archives at: https://archive.archlinux.org/repos/YYYY/MM/DD/core/os/x86_64/. You can crete a `custom/` directory which will be used by `build_archiso.sh` to add a `[custom]` Arch repo and will start a web server to serve up packages back to itself. For this, you'll also need to run `repo-add` in that directory to prepare the metadata files.
+
+For example:
+
+```
+mkdir custom
+cd custom
+wget https://archive.archlinux.org/repos/2018/04/19/core/os/x86_64/linux-4.16.2-2-x86_64.pkg.tar.xz
+wget https://archive.archlinux.org/repos/2018/04/19/core/os/x86_64/linux-headers-4.16.2-2-x86_64.pkg.tar.xz
+repo-add custom.db.tar.xz *.pkg.tar.*
+```
