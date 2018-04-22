@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-set -eu
 
-if [ -n "${DEBUG:-}" ]; then
-  set -x
-fi
+main() {
+  set -eu
+  if [ -n "${DEBUG:-}" ]; then set -x; fi
 
-time docker run -ti --rm -v $(pwd):/mnt --privileged greyltc/archlinux \
-  /mnt/build_archiso.sh
+  time docker run \
+    --rm \
+    --privileged \
+    --volume "$(pwd)":/mnt \
+    greyltc/archlinux \
+    /mnt/build_archiso.sh
+}
+
+main "$@" || exit 99
