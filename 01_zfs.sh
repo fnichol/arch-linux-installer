@@ -1,12 +1,66 @@
 #!/usr/bin/env bash
-set -eu
 
-if [ -n "${DEBUG:-}" ]; then
-  set -x
-fi
+main() {
+  set -eu
+  if [ -n "${DEBUG:-}" ]; then set -x; fi
+
+  version='0.1.0'
+  author='Fletcher Nichol <fnichol@nichol.ca>'
+  program="$(basename "$0")"
+
+  # The name of the zpool
+  pool=tank
+
+  # ## CLI Argument Parsing
+
+  # Parse command line flags and options.
+  while getopts "Vh" opt; do
+    case $opt in
+      V)
+        echo "$program $version"
+        exit 0
+        ;;
+      h)
+        print_help
+        exit 0
+        ;;
+      \?)
+        print_help
+        exit_with "Invalid option: -$OPTARG" 1
+        ;;
+    esac
+  done
+  # Shift off all parsed token in `$*` so that the subcommand is now `$1`.
+  shift "$((OPTIND - 1))"
+
+  if [ -z "${1:-}" ]; then
+    print_help
+    exit_with "Required argument: <DISK>" 2
+  fi
+  disk="$1"
+  shift
+
+  if [ -z "${1:-}" ]; then
+    print_help
+    exit_with "Required argument: <NETIF>" 2
+  fi
+  netif="$1"
+  shift
+
+  partition_disk
+  find_partid
+  create_zpool
+  create_datasets
+  prepare_pool
+  mount_pool_for_install
+  gen_fstab
+  install_base
+  install_grub
+  finalize_pool
+}
 
 print_help() {
-  printf -- "$program $version
+  echo "$program $version
 
 $author
 
@@ -22,34 +76,31 @@ COMMON FLAGS:
 ARGS:
     <DISK>      The disk to use for installation (ex: \`sda')
     <NETIF>     The network interface to setup for DHCP (ex: \`ens33')
-
 "
 }
 
 info() {
   case "${TERM:-}" in
     *term | xterm-* | rxvt | screen | screen-*)
-      printf -- "   \033[1;36m${program:-unknown}: \033[1;37m${1:-}\033[0m\n"
+      printf -- "   \\033[1;36m%s: \\033[1;37m%s\\033[0m\\n" "${program}" "${1:-}"
       ;;
     *)
-      printf -- "   ${program:-unknown}: ${1:-}\n"
+      printf -- "   %s: %s\\n" "${program}" "${1:-}"
       ;;
   esac
   return 0
 }
 
 exit_with() {
-  if [ -n "${DEBUG:-}" ]; then set -x; fi
-
   case "${TERM:-}" in
     *term | xterm-* | rxvt | screen | screen-*)
-      echo -e "\033[1;31mERROR: \033[1;37m$1\033[0m"
+      print -- "\\033[1;31mERROR: \\033[1;37m%s\\033[0m\\n" "${1:-}"
       ;;
     *)
-      echo "ERROR: $1"
+      printf -- "ERROR: %s" "${1:-}"
       ;;
   esac
-  exit ${2:-99}
+  exit "${2:-99}"
 }
 
 in_chroot() {
@@ -69,15 +120,15 @@ find_partid() {
   local retries=0
 
   while [ $retries -lt 5 ]; do
-    for diskid in $(ls -1 /dev/disk/by-id/*); do
-      if [ "$(readlink -f $diskid)" = "/dev/${disk}2" ]; then
+    for diskid in /dev/disk/by-id/*; do
+      if [ "$(readlink -f "$diskid")" = "/dev/${disk}2" ]; then
         partid="$diskid"
         info "Found partition ID for /dev/${disk}2: $partid"
         return
       fi
     done
 
-    retries=$(($retries + 1))
+    retries=$((retries + 1))
     info "Partition ID not found, sleeping and retrying ($retries/5)"
     sleep 3
   done
@@ -115,9 +166,10 @@ mount_pool_for_install() {
 
 gen_fstab() {
   mkdir -pv /mnt/etc
-  genfstab -p /mnt | egrep ROOT/default > /mnt/etc/fstab
+  genfstab -p /mnt | grep -E ROOT/default > /mnt/etc/fstab
 }
 
+# shellcheck disable=SC1004
 install_base() {
   pacstrap /mnt base
 
@@ -166,7 +218,7 @@ next}1' /mnt/boot/grub/grub.cfg
 install_grub() {
   info "Installing GRUB"
   in_chroot \
-    "ln -snf ${disk}2 /dev/$(basename $partid); grub-install /dev/${disk}"
+    "ln -snf ${disk}2 /dev/$(basename "$partid"); grub-install /dev/${disk}"
 }
 
 finalize_pool() {
@@ -174,67 +226,4 @@ finalize_pool() {
   zpool export "$pool"
 }
 
-main() {
-  partition_disk
-  find_partid
-  create_zpool
-  create_datasets
-  prepare_pool
-  mount_pool_for_install
-  gen_fstab
-  install_base
-  install_grub
-  finalize_pool
-}
-
-
-# # Main Flow
-
-# The current version of this program
-version='0.1.0'
-# The author of this program
-author='Fletcher Nichol <fnichol@nichol.ca>'
-# The short version of the program name which is used in logging output
-program="$(basename $0)"
-# The name of the zpool
-pool=tank
-
-
-# ## CLI Argument Parsing
-
-# Parse command line flags and options.
-while getopts "Vh" opt; do
-  case $opt in
-    V)
-      echo "$program $version"
-      exit 0
-      ;;
-    h)
-      print_help
-      exit 0
-      ;;
-    \?)
-      print_help
-      exit_with "Invalid option: -$OPTARG" 1
-      ;;
-  esac
-done
-# Shift off all parsed token in `$*` so that the subcommand is now `$1`.
-shift "$((OPTIND - 1))"
-
-if [ -z "${1:-}" ]; then
-  print_help
-  exit_with "Required argument: <DISK>" 2
-fi
-disk="$1"
-shift
-
-if [ -z "${1:-}" ]; then
-  print_help
-  exit_with "Required argument: <NETIF>" 2
-fi
-netif="$1"
-shift
-
-main
-exit 0
+main "$@" || exit 99
