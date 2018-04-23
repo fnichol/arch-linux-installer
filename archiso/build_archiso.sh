@@ -14,6 +14,8 @@ main() {
   add_zfs_package
   add_openssh
   build_image
+
+  info "All done, image is in $(dirname "$0")/out"
 }
 
 cleanup() {
@@ -122,7 +124,8 @@ build_image() {
   cd "$workdir"
   mkdir -pv out
   ./build.sh -v
-  cp -v out/*.iso "$(dirname "$0")/"
+  mkdir -v -p "$(dirname "$0")/out"
+  cp -v out/*.iso "$(dirname "$0")/out/"
 }
 
 main "$@" || exit 99

@@ -9,7 +9,7 @@ main() {
     --privileged \
     --volume "$(pwd)":/mnt \
     greyltc/archlinux \
-    /mnt/build_archiso.sh
+    "/mnt/$(dirname "$0")/build_archiso.sh"
 }
 
 main "$@" || exit 99

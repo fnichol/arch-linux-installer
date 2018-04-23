@@ -1,2 +1,2 @@
-*.iso
-/custom/
+/archiso/custom/
+/archiso/out/*.iso
