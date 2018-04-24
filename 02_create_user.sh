@@ -34,43 +34,18 @@ main() {
     print_help
     exit_with "Required argument: <USERNAME>" 2
   fi
-  admin="$1"
+  USER="$1"
   shift
 
   if [ -z "${1:-}" ]; then
     print_help
     exit_with "Required argument: <FULLNAME>" 2
   fi
-  admin_comment="$1"
+  COMMENT="$1"
   shift
 
-  info "Installing OpenSSH and sudo"
-  pacman -S --noconfirm openssh sudo
-
-  info "Setting sudoers policy"
-  echo "%wheel ALL=(ALL) ALL" > /etc/sudoers.d/01_wheel
-
-  rm -f /etc/skel/.bashrc
-
-  info "Creating $admin user"
-  zfs create "tank/home/$admin"
-  sleep 2
-  useradd -m -G wheel -s /bin/bash -b /tmp -c "$admin_comment" "$admin"
-  chown -R "${admin}:${admin}" "/home/$admin"
-  chmod 0750  "/home/$admin"
-  (cd "/tmp/$admin"; tar cpf - . | tar xpf - -C "/home/$admin")
-  usermod -d "/home/$admin" "$admin"
-  rm -rf "/tmp/$admin"
-
-  info "Set root password"
-  passwd
-
-  info "Set $admin password"
-  passwd "$admin"
-
-  info "Starting OpenSSH service"
-  systemctl start sshd.socket
-  systemctl enable sshd.socket
+  read_passwd
+  create_user "$USER" "$COMMENT" "$PASSWD"
 }
 
 print_help() {
@@ -115,6 +90,47 @@ exit_with() {
       ;;
   esac
   exit "${2:-99}"
+}
+
+read_passwd() {
+  local user="$1"
+
+  while true; do
+    echo -n "Enter password for $user: "
+    read -s PASSWD
+    echo
+
+    echo -n "Retype password: "
+    read -s retype
+    echo
+
+    if [ "$PASSWD" = "$retype" ]; then
+      unset retype
+      break
+    else
+      echo ">>> Passwords do not match, please try again"
+      echo
+    fi
+  done
+}
+
+create_user() {
+  local user="$1"
+  local comment="$2"
+  local passwd="$3"
+
+  info "Creating $user user"
+  zfs create "tank/home/$user"
+  sleep 2
+  useradd -m -G wheel -s /bin/bash -b /tmp -c "$comment" "$user"
+  chown -R "${user}:${user}" "/home/$user"
+  chmod 0750  "/home/$user"
+  (cd "/tmp/$user"; tar cpf - . | tar xpf - -C "/home/$user")
+  usermod -d "/home/$user" "$user"
+  rm -rf "/tmp/$user"
+
+  info "Set $user password"
+  chpasswd <<< "$user:$passwd"
 }
 
 main "$@" || exit 99

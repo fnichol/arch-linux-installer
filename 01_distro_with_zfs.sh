@@ -320,6 +320,12 @@ Server = http://archzfs.com/$repo/x86_64\n\
 
   info "Set initial root password"
   chpasswd <<< "root:$ROOT_PASSWD"
+
+  info "Setting sudoers policy"
+  in_chroot "echo '%wheel ALL=(ALL) ALL' > /etc/sudoers.d/01_wheel"
+
+  info "Remove default .bashrc in /etc/skell"
+  in_chroot "rm -f /etc/skel/.bashrc"
 }
 
 install_grub() {
