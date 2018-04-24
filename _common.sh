@@ -16,7 +16,7 @@ exit_with() {
       printf -- "\\033[1;31mERROR: \\033[1;37m%s\\033[0m\\n" "${1:-}"
       ;;
     *)
-      printf -- "ERROR: %s" "${1:-}"
+      printf -- "ERROR: %s\\n" "${1:-}"
       ;;
   esac
   exit "${2:-99}"
@@ -42,4 +42,12 @@ read_passwd() {
       echo
     fi
   done
+}
+
+is_in_vmware() {
+  if [ "$(cat /sys/class/dmi/id/sys_vendor)" = "VMware, Inc." ]; then
+    return 0
+  else
+    return 1
+  fi
 }
