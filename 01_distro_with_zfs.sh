@@ -8,12 +8,61 @@ main() {
   author='Fletcher Nichol <fnichol@nichol.ca>'
   program="$(basename "$0")"
 
+  # shellcheck source=_common.sh
+  . "${0%/*}/_common.sh"
+
   # The name of the zpool
   pool=tank
 
-  # ## CLI Argument Parsing
+  echo "BASH_SOURCE: ${BASH_SOURCE}"
+  echo "\$0: $0"
 
-  # Parse command line flags and options.
+  parse_cli_args "$@"
+
+  partition_disk
+  find_partid
+  find_esp_dev
+  create_esp
+  create_zpool
+  create_datasets
+  prepare_pool
+  mount_pool_for_install
+  gen_fstab
+  install_base
+  install_grub
+  finalize_pool
+}
+
+print_help() {
+  echo "$program $version
+
+$author
+
+Arch Linux with ZFS installer.
+
+USAGE:
+        $program [FLAGS] [OPTIONS] <DISK> <NETIF>
+
+FLAGS:
+    -e  Encrypt the partition for the zpool (default: no)
+    -h  Prints this message
+    -V  Prints version information
+
+OPTIONS:
+    -p <PARTITION_TYPE>   Choose a partitioning type (default: whole)
+    -P <ROOT_PASSWD_FILE> Read initial root password from file (default: prompt)
+
+ARGS:
+    <DISK>      The disk to use for installation (ex: \`nvme0n1')
+                This can be found by using the \`lsblk' program.
+    <NETIF>     The network interface to setup for DHCP (ex: \`ens33')
+                This can be found by using the \`ip addr' program.
+"
+}
+
+parse_cli_args() {
+  OPTIND=1
+  # Parse command line flags and options
   while getopts ":ep:P:Vh" opt; do
     case $opt in
       e)
@@ -73,97 +122,15 @@ main() {
     PART_TYPE=whole
   fi
 
-  if [ -z "${ROOT_PASSWD:-}"]; then
-    read_root_passwd
+  if [ -z "${ROOT_PASSWD:-}" ]; then
+    read_passwd "root"
+    ROOT_PASSWD="$PASSWD"
+    unset PASSWD
   fi
-
-  partition_disk
-  find_partid
-  find_esp_dev
-  create_esp
-  create_zpool
-  create_datasets
-  prepare_pool
-  mount_pool_for_install
-  gen_fstab
-  install_base
-  install_grub
-  finalize_pool
-}
-
-print_help() {
-  echo "$program $version
-
-$author
-
-Arch Linux with ZFS installer.
-
-USAGE:
-        $program [FLAGS] [OPTIONS] <DISK> <NETIF>
-
-FLAGS:
-    -e  Encrypt the partition for the zpool (default: no)
-    -h  Prints this message
-    -V  Prints version information
-
-OPTIONS:
-    -p <PARTITION_TYPE>   Choose a partitioning type (default: whole)
-    -P <ROOT_PASSWD_FILE> Read initial root password from file (default: prompt)
-
-ARGS:
-    <DISK>      The disk to use for installation (ex: \`nvme0n1')
-                This can be found by using the \`lsblk' program.
-    <NETIF>     The network interface to setup for DHCP (ex: \`ens33')
-                This can be found by using the \`ip addr' program.
-"
-}
-
-info() {
-  case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
-      printf -- "   \\033[1;36m%s: \\033[1;37m%s\\033[0m\\n" "${program}" "${1:-}"
-      ;;
-    *)
-      printf -- "   %s: %s\\n" "${program}" "${1:-}"
-      ;;
-  esac
-  return 0
-}
-
-exit_with() {
-  case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
-      printf -- "\\033[1;31mERROR: \\033[1;37m%s\\033[0m\\n" "${1:-}"
-      ;;
-    *)
-      printf -- "ERROR: %s" "${1:-}"
-      ;;
-  esac
-  exit "${2:-99}"
 }
 
 in_chroot() {
   arch-chroot /mnt /bin/bash -c "$*"
-}
-
-read_root_passwd() {
-  while true; do
-    echo -n "Initial root password: "
-    read -s ROOT_PASSWD
-    echo
-
-    echo -n "Retype password: "
-    read -s retype
-    echo
-
-    if [ "$ROOT_PASSWD" = "$retype" ]; then
-      unset retype
-      break
-    else
-      echo ">>> Passwords do not match, please try again"
-      echo
-    fi
-  done
 }
 
 partition_disk() {
@@ -303,6 +270,7 @@ Server = http://archzfs.com/$repo/x86_64\n\
     "pacman-key -r 5E1ABF240EE7A126 && pacman-key --lsign-key 5E1ABF240EE7A126"
 
   info "Installing extra packages"
+  # shellcheck disable=SC2145
   in_chroot "pacman -Sy; pacman -S --noconfirm ${extra_pkgs[@]}"
 
   info "Modifying HOOKS in mkinitcpio.conf"
@@ -347,4 +315,6 @@ finalize_pool() {
   zpool export "$pool"
 }
 
-main "$@" || exit 99
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@" || exit 99
+fi

@@ -8,9 +8,38 @@ main() {
   author='Fletcher Nichol <fnichol@nichol.ca>'
   program="$(basename "$0")"
 
-  # ## CLI Argument Parsing
+  # shellcheck source=_common.sh
+  . "${0%/*}/_common.sh"
 
-  # Parse command line flags and options.
+  parse_cli_args "$@"
+
+  read_passwd
+  create_user "$USER" "$COMMENT" "$PASSWD"
+}
+
+print_help() {
+  echo "$program $version
+
+$author
+
+Arch Linux Base Postinstall.
+
+USAGE:
+        $program [FLAGS] [OPTIONS] <USERNAME> <FULLNAME>
+
+COMMON FLAGS:
+    -h  Prints this message
+    -V  Prints version information
+
+ARGS:
+    <USERNAME>    Admin username (ex: \`jdoe')
+    <FULLNAME>    Admin name (ex: \`Jane Doe')
+"
+}
+
+parse_cli_args() {
+  OPTIND=1
+  # Parse command line flags and options
   while getopts "Vh" opt; do
     case $opt in
       V)
@@ -43,75 +72,6 @@ main() {
   fi
   COMMENT="$1"
   shift
-
-  read_passwd
-  create_user "$USER" "$COMMENT" "$PASSWD"
-}
-
-print_help() {
-  echo "$program $version
-
-$author
-
-Arch Linux Base Postinstall.
-
-USAGE:
-        $program [FLAGS] [OPTIONS] <USERNAME> <FULLNAME>
-
-COMMON FLAGS:
-    -h  Prints this message
-    -V  Prints version information
-
-ARGS:
-    <USERNAME>    Admin username (ex: \`jdoe')
-    <FULLNAME>    Admin name (ex: \`Jane Doe')
-"
-}
-
-info() {
-  case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
-      printf -- "   \\033[1;36m%s: \\033[1;37m%s\\033[0m\\n" "${program}" "${1:-}"
-      ;;
-    *)
-      printf -- "   %s: %s\\n" "${program}" "${1:-}"
-      ;;
-  esac
-  return 0
-}
-
-exit_with() {
-  case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
-      printf -- "\\033[1;31mERROR: \\033[1;37m%s\\033[0m\\n" "${1:-}"
-      ;;
-    *)
-      printf -- "ERROR: %s" "${1:-}"
-      ;;
-  esac
-  exit "${2:-99}"
-}
-
-read_passwd() {
-  local user="$1"
-
-  while true; do
-    echo -n "Enter password for $user: "
-    read -s PASSWD
-    echo
-
-    echo -n "Retype password: "
-    read -s retype
-    echo
-
-    if [ "$PASSWD" = "$retype" ]; then
-      unset retype
-      break
-    else
-      echo ">>> Passwords do not match, please try again"
-      echo
-    fi
-  done
 }
 
 create_user() {
@@ -133,4 +93,6 @@ create_user() {
   chpasswd <<< "$user:$passwd"
 }
 
-main "$@" || exit 99
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@" || exit 99
+fi
