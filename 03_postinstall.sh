@@ -21,6 +21,11 @@ main() {
   find_fastest_mirrors
   add_yaourt_repo
 
+  if [ -n "${INSTALL_X:-}" ]; then
+    install_x_hardware_specific_pkgs
+    setup_x
+  fi
+
   info "Finished."
 }
 
@@ -34,9 +39,10 @@ Arch Linux Postinstall.
 USAGE:
         $program [FLAGS] [OPTIONS] <TZ>
 
-COMMON FLAGS:
+FLAGS:
     -h  Prints this message
     -V  Prints version information
+    -X  Skip installation and setup of GUI/X environment (default: install)
 
 ARGS:
     <TZ>  Timezone (ex: \`America/Edmonton', \`UTC')
@@ -44,10 +50,16 @@ ARGS:
 }
 
 parse_cli_args() {
+  # Default installation of X to true
+  INSTALL_X=true
+
   OPTIND=1
   # Parse command line flags and options.
-  while getopts "Vh" opt; do
+  while getopts "XVh" opt; do
     case $opt in
+      X)
+        unset INSTALL_X
+        ;;
       V)
         echo "$program $version"
         exit 0
@@ -168,6 +180,43 @@ EOF
 
   info "Installing yaourt"
   pacman -S --noconfirm yaourt
+}
+
+install_x_hardware_specific_pkgs() {
+  if is_in_vmware; then
+    info "Installing VMware-specific software"
+    pacman -S --noconfirm \
+      gtkmm3 \
+      libxtst \
+      mesa-libgl \
+      xf86-input-vmmouse \
+      xf86-video-vmware
+
+    info "Starting & enabling vmware-vmblock-fuse service"
+    systemctl start vmware-vmblock-fuse.service
+    systemctl enable vmware-vmblock-fuse.service
+  fi
+}
+
+setup_x() {
+  info "Installing X, a window manager, and utilities"
+  pacman -S --noconfirm \
+    dmenu \
+    i3 \
+    termite \
+    xf86-input-evdev \
+    xorg-server \
+    xorg-xinit
+
+  info "Creating default xinitrc for startx"
+  local xi=/etc/X11/xinit/xinitrc
+  rm -f "$xi"
+  touch "$xi"
+  if is_in_vmware; then
+    echo "/usr/sbin/vmware-user-suid-wrapper" >> "$xi"
+  fi
+  echo "xset r rate 200 30" >> "$xi"
+  echo "exec i3" >> "$xi"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
