@@ -1,12 +1,24 @@
 #!/usr/bin/env bash
-set -eu
 
-if [ -n "${DEBUG:-}" ]; then
-  set -x
-fi
+main() {
+  set -eu
+  if [ -n "${DEBUG:-}" ]; then set -x; fi
+
+  version='0.1.0'
+  author='Fletcher Nichol <fnichol@nichol.ca>'
+  program="$(basename "$0")"
+
+  # shellcheck source=_common.sh
+  . "${0%/*}/_common.sh"
+
+  parse_cli_args "$@"
+
+  install_x_hardware_specific_pkgs
+  setup_x
+}
 
 print_help() {
-  printf -- "$program $version
+  echo "$program $version
 
 $author
 
@@ -18,45 +30,33 @@ USAGE:
 COMMON FLAGS:
     -h  Prints this message
     -V  Prints version information
-
 "
 }
 
-info() {
-  case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
-      printf -- "   \033[1;36m${program:-unknown}: \033[1;37m${1:-}\033[0m\n"
-      ;;
-    *)
-      printf -- "   ${program:-unknown}: ${1:-}\n"
-      ;;
-  esac
-  return 0
+parse_cli_args() {
+  OPTIND=1
+  # Parse command line flags and options.
+  while getopts "Vh" opt; do
+    case $opt in
+      V)
+        echo "$program $version"
+        exit 0
+        ;;
+      h)
+        print_help
+        exit 0
+        ;;
+      \?)
+        print_help
+        exit_with "Invalid option: -$OPTARG" 1
+        ;;
+    esac
+  done
+  # Shift off all parsed token in `$*` so that the subcommand is now `$1`.
+  shift "$((OPTIND - 1))"
 }
 
-exit_with() {
-  if [ -n "${DEBUG:-}" ]; then set -x; fi
-
-  case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
-      echo -e "\033[1;31mERROR: \033[1;37m$1\033[0m"
-      ;;
-    *)
-      echo "ERROR: $1"
-      ;;
-  esac
-  exit ${2:-99}
-}
-
-is_in_vmware() {
-  if [ "$(cat /sys/class/dmi/id/sys_vendor)" = "VMware, Inc." ]; then
-    return 0
-  else
-    return 1
-  fi
-}
-
-main() {
+install_x_hardware_specific_pkgs() {
   if is_in_vmware; then
     info "Installing VMware-specific software"
     pacman -S --noconfirm \
@@ -66,10 +66,13 @@ main() {
       xf86-input-vmmouse \
       xf86-video-vmware
 
+    info "Starting & enabling vmware-vmblock-fuse service"
     systemctl start vmware-vmblock-fuse.service
     systemctl enable vmware-vmblock-fuse.service
   fi
+}
 
+setup_x() {
   info "Installing X, a window manager, and utilities"
   pacman -S --noconfirm \
     dmenu \
@@ -88,68 +91,8 @@ main() {
   fi
   echo "xset r rate 200 30" >> "$xi"
   echo "exec i3" >> "$xi"
-
-  # if ! grep -q infinality-bundle /etc/pacman.conf > /dev/null; then
-  #   info "Adding infinality-bundle repositories"
-  #   cat <<'EOF' >> /etc/pacman.conf
-
-# [infinality-bundle]
-# Server = http://bohoomil.com/repo/$arch
-
-# [infinality-bundle-fonts]
-# Server = http://bohoomil.com/repo/fonts
-# EOF
-  #   pacman-key -r 962DDE58
-  #   pacman-key --lsign-key 962DDE58
-
-  #   info "Refreshing package list and upgrading"
-  #   pacman -Syyu --noconfirm
-  # fi
-
-  # info "Installing much better font rendering"
-  # pacman -S \
-  #   infinality-bundle \
-  #   ibfonts-meta-base \
-  #   ttf-overpass-fonts-ibx \
-  #   otf-inconsolatazi4-ibx
-
-  # lxappearance
-  # rofi
-  # compton
 }
 
-
-# # Main Flow
-
-# The current version of this program
-version='0.1.0'
-# The author of this program
-author='Fletcher Nichol <fnichol@nichol.ca>'
-# The short version of the program name which is used in logging output
-program="$(basename $0)"
-
-
-# ## CLI Argument Parsing
-
-# Parse command line flags and options.
-while getopts "Vh" opt; do
-  case $opt in
-    V)
-      echo "$program $version"
-      exit 0
-      ;;
-    h)
-      print_help
-      exit 0
-      ;;
-    \?)
-      print_help
-      exit_with "Invalid option: -$OPTARG" 1
-      ;;
-  esac
-done
-# Shift off all parsed token in `$*` so that the subcommand is now `$1`.
-shift "$((OPTIND - 1))"
-
-main
-exit 0
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@" || exit 99
+fi
