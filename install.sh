@@ -381,8 +381,6 @@ ExecStart=/usr/bin/hwclock --hctosys --utc
 [Install]
 WantedBy=suspend.target
 EOF
-    # TODO fn: does this work?
-    in_chroot "systemctl daemon-reload"
 
     info "Enabling hwclock-resume service"
     in_chroot "systemctl enable hwclock-resume.service"
