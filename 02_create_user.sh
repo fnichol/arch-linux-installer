@@ -11,9 +11,12 @@ main() {
   # shellcheck source=_common.sh
   . "${0%/*}/_common.sh"
 
+  # The name of the zpool
+  pool=tank
+
   parse_cli_args "$@"
 
-  read_passwd
+  read_passwd "$USER"
   create_user "$USER" "$COMMENT" "$PASSWD"
 }
 
@@ -80,9 +83,16 @@ create_user() {
   local passwd="$3"
 
   info "Creating $user user"
-  zfs create "tank/home/$user"
+  zfs create "$pool/home/$user"
   sleep 2
-  useradd -m -G wheel -s /bin/bash -b /tmp -c "$comment" "$user"
+  useradd \
+    --create-home \
+    --user-group \
+    --groups wheel \
+    --shell /bin/bash \
+    --base-dir /tmp \
+    --comment "$comment" \
+    "$user"
   chown -R "${user}:${user}" "/home/$user"
   chmod 0750  "/home/$user"
   (cd "/tmp/$user"; tar cpf - . | tar xpf - -C "/home/$user")
