@@ -1,65 +1,18 @@
 #!/usr/bin/env bash
-set -eu
-
-if [ -n "${DEBUG:-}" ]; then
-  set -x
-fi
-
-print_help() {
-  printf -- "$program $version
-
-$author
-
-Arch Linux Postinstall.
-
-USAGE:
-        $program [FLAGS] [OPTIONS] <HOSTNAME>
-
-COMMON FLAGS:
-    -h  Prints this message
-    -V  Prints version information
-
-ARGS:
-    <HOSTNAME>    Hostname (ex: \`fuzzy')
-
-"
-}
-
-info() {
-  case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
-      printf -- "   \033[1;36m${program:-unknown}: \033[1;37m${1:-}\033[0m\n"
-      ;;
-    *)
-      printf -- "   ${program:-unknown}: ${1:-}\n"
-      ;;
-  esac
-  return 0
-}
-
-exit_with() {
-  if [ -n "${DEBUG:-}" ]; then set -x; fi
-
-  case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
-      echo -e "\033[1;31mERROR: \033[1;37m$1\033[0m"
-      ;;
-    *)
-      echo "ERROR: $1"
-      ;;
-  esac
-  exit ${2:-99}
-}
-
-is_in_vmware() {
-  if [ "$(cat /sys/class/dmi/id/sys_vendor)" = "VMware, Inc." ]; then
-    return 0
-  else
-    return 1
-  fi
-}
 
 main() {
+  set -eu
+  if [ -n "${DEBUG:-}" ]; then set -x; fi
+
+  version='0.1.0'
+  author='Fletcher Nichol <fnichol@nichol.ca>'
+  program="$(basename "$0")"
+
+  # shellcheck source=_common.sh
+  . "${0%/*}/_common.sh"
+
+  parse_cli_args "$@"
+
   # * https://wiki.archlinux.org/index.php/Time
   # * https://wiki.archlinux.org/index.php/Systemd-timesyncd
   tz="America/Edmonton"
@@ -104,10 +57,11 @@ EOF
 
   locales=(en_CA.UTF-8 en_US.UTF-8 en_US)
   default_locale="en_US.UTF-8"
-  for l in ${locales[@]}; do
+  for l in "${locales[@]}"; do
+    # shellcheck disable=SC1117
     sed -i "s|^#\(${l}\)|\1|" /etc/locale.gen
   done; unset l
-  info "Generating locales for ${locales[@]}"
+  info "Generating locales for ${locales[*]}"
   locale-gen
   info "Setting default locale to $default_locale"
   echo "LANG=$default_locale" > /etc/locale.conf
@@ -158,45 +112,63 @@ EOF
   rm -f /tmp/install.sh
 }
 
+print_help() {
+  echo "$program $version
 
-# # Main Flow
+$author
 
-# The current version of this program
-version='0.1.0'
-# The author of this program
-author='Fletcher Nichol <fnichol@nichol.ca>'
-# The short version of the program name which is used in logging output
-program="$(basename $0)"
+Arch Linux Postinstall.
 
+USAGE:
+        $program [FLAGS] [OPTIONS] <HOSTNAME>
 
-# ## CLI Argument Parsing
+COMMON FLAGS:
+    -h  Prints this message
+    -V  Prints version information
 
-# Parse command line flags and options.
-while getopts "Vh" opt; do
-  case $opt in
-    V)
-      echo "$program $version"
-      exit 0
-      ;;
-    h)
-      print_help
-      exit 0
-      ;;
-    \?)
-      print_help
-      exit_with "Invalid option: -$OPTARG" 1
-      ;;
-  esac
-done
-# Shift off all parsed token in `$*` so that the subcommand is now `$1`.
-shift "$((OPTIND - 1))"
+ARGS:
+    <HOSTNAME>    Hostname (ex: \`fuzzy')
+"
+}
 
-if [ -z "${1:-}" ]; then
-  print_help
-  exit_with "Required argument: <HOSTNAME>" 2
+parse_cli_args() {
+  OPTIND=1
+  # Parse command line flags and options.
+  while getopts "Vh" opt; do
+    case $opt in
+      V)
+        echo "$program $version"
+        exit 0
+        ;;
+      h)
+        print_help
+        exit 0
+        ;;
+      \?)
+        print_help
+        exit_with "Invalid option: -$OPTARG" 1
+        ;;
+    esac
+  done
+  # Shift off all parsed token in `$*` so that the subcommand is now `$1`.
+  shift "$((OPTIND - 1))"
+
+  if [ -z "${1:-}" ]; then
+    print_help
+    exit_with "Required argument: <HOSTNAME>" 2
+  fi
+  hostname="$1"
+  shift
+}
+
+is_in_vmware() {
+  if [ "$(cat /sys/class/dmi/id/sys_vendor)" = "VMware, Inc." ]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@" || exit 99
 fi
-hostname="$1"
-shift
-
-main
-exit 0
