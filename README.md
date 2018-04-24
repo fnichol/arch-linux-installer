@@ -24,6 +24,8 @@
 ## Package Repository Links
 
 * Archzfs: http://archzfs.com/archzfs/x86_64/
+* https://archive.archlinux.org/packages/l/linux/
+* https://archive.archlinux.org/packages/l/linux-headers/
 * Arch Archive by date: https://archive.archlinux.org/repos/2018/04/19/core/os/x86_64/
 
 ## Custom Version of Kernel
