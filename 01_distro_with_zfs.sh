@@ -14,9 +14,6 @@ main() {
   # The name of the zpool
   pool=tank
 
-  echo "BASH_SOURCE: ${BASH_SOURCE}"
-  echo "\$0: $0"
-
   parse_cli_args "$@"
 
   partition_disk
@@ -287,7 +284,7 @@ Server = http://archzfs.com/$repo/x86_64\n\
   in_chroot "systemctl enable sshd.socket"
 
   info "Set initial root password"
-  chpasswd <<< "root:$ROOT_PASSWD"
+  in_chroot "chpasswd <<< 'root:$ROOT_PASSWD'"
 
   info "Setting sudoers policy"
   in_chroot "echo '%wheel ALL=(ALL) ALL' > /etc/sudoers.d/01_wheel"
