@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 info() {
   case "${TERM:-}" in
     *term | xterm-* | rxvt | screen | screen-*)
@@ -27,11 +29,11 @@ read_passwd() {
 
   while true; do
     echo -n "Enter password for $user: "
-    read -s PASSWD
+    read -r -s PASSWD
     echo
 
     echo -n "Retype password: "
-    read -s retype
+    read -r -s retype
     echo
 
     if [ "$PASSWD" = "$retype" ]; then
