@@ -2,7 +2,7 @@
 
 main() {
   set -eu
-  if [ -n "${DEBUG:-}" ]; then set -x; fi
+  if [[ -n "${DEBUG:-}" ]]; then set -x; fi
 
   version='0.1.0'
   author='Fletcher Nichol <fnichol@nichol.ca>'
@@ -40,7 +40,7 @@ main() {
 
   copy_create_user_script
 
-  if [ -n "${INSTALL_X:-}" ]; then
+  if [[ -n "${INSTALL_X:-}" ]]; then
     install_x_hardware_specific_pkgs
     setup_x
   fi
@@ -65,7 +65,9 @@ FLAGS:
     -X  Skip installation and setup of GUI/X environment (default: install)
 
 OPTIONS:
+    -a <PARTITION>        Choose a partition for type partition (ex: nvme0n1p5)
     -p <PARTITION_TYPE>   Choose a partitioning type (default: whole)
+                          (values: existing, remaining, whole)
     -P <ROOT_PASSWD_FILE> Read initial root password from file (default: prompt)
     -t <TZ>               Timezone (ex: \`America/Edmonton') (default: \`UTC')
 
@@ -87,14 +89,17 @@ parse_cli_args() {
 
   OPTIND=1
   # Parse command line flags and options
-  while getopts ":ep:P:t:XVh" opt; do
+  while getopts ":a:ep:P:t:XVh" opt; do
     case $opt in
+      a)
+        PARTITION="$OPTARG"
+        ;;
       e)
         ENCRYPT=true
         ;;
       p)
         case "$OPTARG" in
-          whole)
+          existing|remaining|whole)
             # skip
             ;;
           *)
@@ -134,21 +139,26 @@ parse_cli_args() {
   # Shift off all parsed token in `$*` so that the subcommand is now `$1`.
   shift "$((OPTIND - 1))"
 
-  if [ -z "${1:-}" ]; then
+  if [[ -z "${1:-}" ]]; then
     print_help
     exit_with "Required argument: <DISK>" 2
   fi
   DISK="$1"
   shift
 
-  if [ -z "${1:-}" ]; then
+  if [[ -z "${1:-}" ]]; then
     print_help
     exit_with "Required argument: <NETIF>" 2
   fi
   NETIF="$1"
   shift
 
-  if [ -z "${ROOT_PASSWD:-}" ]; then
+  if [[ "$PART_TYPE" == "existing" && -z "${PARTITION:-}" ]]; then
+    print_help
+    exit_with "Partition (-a) required when partition type is 'existing'" 2
+  fi
+
+  if [[ -z "${ROOT_PASSWD:-}" ]]; then
     read_passwd "root"
     ROOT_PASSWD="$PASSWD"
     unset PASSWD
@@ -161,12 +171,37 @@ in_chroot() {
 
 partition_disk() {
   case "$PART_TYPE" in
+    existing)
+      partition="$PARTITION"
+      info "Using existing partition $partition on disk $DISK"
+      ;;
+    remaining)
+      info "Partitioning remaing space on disk $DISK"
+      local start num
+
+      # Find last free space block on the disk
+      start="$(parted "/dev/$DISK" unit MiB print free \
+        | grep 'Free Space' \
+        | tail -n 1 \
+        | awk '{print $1}')"
+      # Create a partition filling the remaining part of the disk
+      parted --script "/dev/$DISK" \
+        mkpart primary "$start" 100%
+      # Determine the partition number for the newly created partition
+      num="$(parted "/dev/$DISK" unit MiB print \
+        | awk "\$2 == \"$start\" {print \$1}")"
+
+      partition="${DISK}p${num}"
+      ;;
     whole)
+      info "Partitioning whole disk $DISK"
       parted --script "/dev/$DISK" \
         mklabel gpt \
         mkpart ESP fat32 1MiB 551MiB \
         mkpart primary 551MiB 100% \
         set 1 boot on
+
+      partition="${DISK}p2"
       ;;
     *)
       print_help
@@ -180,9 +215,9 @@ find_partid() {
 
   while [ $retries -lt 5 ]; do
     for diskid in /dev/disk/by-id/*; do
-      if [ "$(readlink -f "$diskid")" = "/dev/${DISK}p2" ]; then
+      if [[ "$(readlink -f "$diskid")" = "/dev/$partition" ]]; then
         partid="$diskid"
-        info "Found partition ID for /dev/${DISK}2: $partid"
+        info "Found partition ID for /dev/$partition: $partid"
         return
       fi
     done
@@ -192,7 +227,7 @@ find_partid() {
     sleep 3
   done
 
-  exit_with "Could not find partition ID for /dev/${DISK}2" 10
+  exit_with "Could not find partition ID for /dev/$partition" 10
 }
 
 find_esp_dev() {
@@ -200,14 +235,23 @@ find_esp_dev() {
     | grep 'EFI System$' \
     | head -n 1 \
     | cut -d ' ' -f 1)"
-  if [ -z "$esp_dev" ]; then
+  if [[ -z "$esp_dev" ]]; then
     exit_with "Could not find an EFI System Partition (ESP) on /dev/$DISK" 5
+  else
+    info "Found EFI System Partition (ESP) $esp_dev on /dev/$DISK"
   fi
 }
 
 create_esp() {
-  info "Creating EFI System Partition (ESP) filesystem on $esp_dev"
-  mkfs.fat -F32 "$esp_dev"
+  case "$PART_TYPE" in
+    whole)
+      info "Creating EFI System Partition (ESP) filesystem on $esp_dev"
+      mkfs.fat -F32 "$esp_dev"
+      ;;
+    *)
+      # Partition already exists
+      ;;
+  esac
 }
 
 create_zpool() {
@@ -413,7 +457,7 @@ find_fastest_mirrors() {
   in_chroot \
     "rankmirrors -n 6 /etc/pacman.d/mirrorlist.new > /etc/pacman.d/mirrorlist"
   rm -f /mnt/etc/pacman.d/mirrorlist.new
-  in_chroot "pacman -Syyu"
+  in_chroot "pacman -Syyu --noconfirm"
 }
 
 add_yaourt_repo() {
