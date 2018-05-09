@@ -20,6 +20,7 @@ main() {
   find_partid
   find_esp_dev
   create_esp
+  encrypt_partition
   create_zpool
   create_datasets
   prepare_pool
@@ -65,11 +66,14 @@ FLAGS:
     -X  Skip installation and setup of GUI/X environment (default: install)
 
 OPTIONS:
-    -a <PARTITION>        Choose a partition for type partition (ex: nvme0n1p5)
-    -p <PARTITION_TYPE>   Choose a partitioning type (default: whole)
-                          (values: existing, remaining, whole)
-    -P <ROOT_PASSWD_FILE> Read initial root password from file (default: prompt)
-    -t <TZ>               Timezone (ex: \`America/Edmonton') (default: \`UTC')
+    -a <PARTITION>            Choose a partition for type partition
+                              (ex: nvme0n1p5)
+    -p <PARTITION_TYPE>       Choose a partitioning type (default: whole)
+                              (values: existing, remaining, whole)
+    -P <ROOT_PASSWD_FILE>     Read initial root password from file
+                              (default: prompt)
+    -t <TZ>                   Timezone (ex: \`America/Edmonton')
+                              (default: \`UTC')
 
 ARGS:
     <DISK>      The disk to use for installation (ex: \`nvme0n1')
@@ -176,7 +180,7 @@ partition_disk() {
       info "Using existing partition $partition on disk $DISK"
       ;;
     remaining)
-      info "Partitioning remaing space on disk $DISK"
+      info "Partitioning remaining space on disk $DISK"
       local start num
 
       # Find last free space block on the disk
@@ -254,12 +258,27 @@ create_esp() {
   esac
 }
 
+encrypt_partition() {
+  if [[ -z "${ENCRYPT:-}" ]]; then
+    zpool_dev="$partid"
+    return
+  fi
+
+  cryptsetup luksFormat \
+    --cipher aes-xts-plain64 \
+    --hash sha512 \
+    "$partid"
+  cryptsetup open --type luks "$partid" cryptroot
+
+  zpool_dev="/dev/mapper/cryptroot"
+}
+
 create_zpool() {
   # Load the ZFS kernel module
   modprobe zfs
 
   # Create the root pool
-  zpool create -f "$pool" "$partid"
+  zpool create -f "$pool" "$zpool_dev"
 
   # Set default tunings for pool
   #
@@ -368,6 +387,17 @@ enable_services() {
 }
 
 install_grub() {
+  if [[ -n "${ENCRYPT:-}" ]]; then
+    local grub_val
+    grub_val="cryptdevice=${partid}:cryptroot"
+
+    info "Adding disk encryption support for GRUB"
+    sed -i \
+      -e 's,^#\(GRUB_ENABLE_CRYPTODISK=y\)$,\1,' \
+      -e "s,^\\(GRUB_CMDLINE_LINUX\\)=\"\\(.*\\)\"$,\\1=\"\\2 $grub_val\"," \
+      /mnt/etc/default/grub
+  fi
+
   info "Installing GRUB"
   in_chroot \
     "ZPOOL_VDEV_NAME_PATH=1 grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB"
@@ -377,7 +407,7 @@ install_grub() {
     "ZPOOL_VDEV_NAME_PATH=1 grub-mkconfig -o /boot/grub/grub.cfg"
 
   info "Modifying HOOKS in mkinitcpio.conf"
-  sed -i 's|^HOOKS=.*|HOOKS="base udev autodetect modconf block keyboard zfs filesystems shutdown"|g' /mnt/etc/mkinitcpio.conf
+  sed -i 's|^HOOKS=.*|HOOKS="base udev autodetect modconf block keyboard encrypt zfs filesystems shutdown"|g' /mnt/etc/mkinitcpio.conf
 
   info "Update initial ramdisk (initrd) with ZFS support"
   in_chroot "mkinitcpio -p linux"
@@ -525,6 +555,10 @@ finalize_pool() {
   umount /mnt/boot/efi
   zfs umount -a
   zpool export "$pool"
+
+  if [[ -n "${ENCRYPT:-}" ]]; then
+    cryptsetup close cryptroot
+  fi
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
