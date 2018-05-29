@@ -46,6 +46,7 @@ main() {
   fi
 
   finalize_pool
+  finish
 }
 
 print_help() {
@@ -534,13 +535,21 @@ setup_x() {
 }
 
 finalize_pool() {
+  info "Unmounting /mnt/boot/efi"
   umount /mnt/boot/efi
+  info "Unmounting ZFS datasets"
   zfs umount -a
+  info "Exporting ZFS zpool $pool"
   zpool export "$pool"
 
   if [[ -n "${ENCRYPT:-}" ]]; then
+    info "Closing cryptoroot"
     cryptsetup close cryptroot
   fi
+}
+
+finish() {
+  info "Arch Linux with ZFS installer complete, enjoy."
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
