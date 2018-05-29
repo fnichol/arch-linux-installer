@@ -37,7 +37,6 @@ main() {
   setup_clock
   generate_locales
   find_fastest_mirrors
-  add_yaourt_repo
 
   copy_create_user_script
 
@@ -488,20 +487,6 @@ find_fastest_mirrors() {
     "rankmirrors -n 6 /etc/pacman.d/mirrorlist.new > /etc/pacman.d/mirrorlist"
   rm -f /mnt/etc/pacman.d/mirrorlist.new
   in_chroot "pacman -Syyu --noconfirm"
-}
-
-add_yaourt_repo() {
-  info "Adding repository for Yaourt"
-  cat <<'EOF' >> /mnt/etc/pacman.conf
-
-[archlinuxfr]
-SigLevel = Never
-Server = http://repo.archlinux.fr/$arch
-EOF
-  in_chroot "pacman -Sy --noconfirm"
-
-  info "Installing yaourt"
-  in_chroot "pacman -S --noconfirm yaourt"
 }
 
 copy_create_user_script() {
