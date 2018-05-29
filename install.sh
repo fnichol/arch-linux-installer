@@ -514,9 +514,7 @@ install_x_hardware_specific_pkgs() {
 
 setup_x() {
   local x_pkgs=(
-    dmenu
     i3
-    termite
     xf86-input-evdev
     xorg-server
     xorg-xinit
@@ -525,15 +523,14 @@ setup_x() {
   info "Installing X, a window manager, and utilities"
   in_chroot "pacman -S --noconfirm ${x_pkgs[*]}"
 
-  info "Creating default xinitrc for startx"
-  local xi=/mnt/etc/X11/xinit/xinitrc
-  rm -f "$xi"
-  touch "$xi"
   if is_in_vmware; then
-    echo "/usr/sbin/vmware-user-suid-wrapper" >> "$xi"
+    local f=/mnt/etc/X11/xinit/xinitrc.d/10-vmware.sh
+    info "Adding vmware-user-suid-wrapper to xinitirc.d"
+    echo "/usr/sbin/vmware-user-suid-wrapper" > "$f"
+    chmod -v 755 "$f"
   fi
-  echo "xset r rate 200 30" >> "$xi"
-  echo "exec i3" >> "$xi"
+
+  # TODO fn: is the deafult xinitrc reasonable or shoud we append `exec i3`?
 }
 
 finalize_pool() {
