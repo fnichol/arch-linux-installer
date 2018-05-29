@@ -338,7 +338,7 @@ install_base() {
   local extra_pkgs=(
     zfs-linux
     intel-ucode grub efibootmgr os-prober
-    openssh sudo
+    openssh sudo pacman-contrib
   )
 
   pacstrap /mnt base
