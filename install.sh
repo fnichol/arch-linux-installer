@@ -27,6 +27,7 @@ main() {
   mount_pool_for_install
 
   gen_fstab
+  add_custom_repo
   install_base
   set_root_passwd
   enable_services
@@ -333,6 +334,26 @@ gen_fstab() {
   genfstab -U -p /mnt | grep -E ROOT/default > /mnt/etc/fstab
 }
 
+add_custom_repo() {
+  local repo_path
+
+  if [ -d "$(dirname "$0")/custom" ]; then
+    info "Detected and adding a custom repository to pacman.conf"
+    repo_path="$(readlink -f "$(dirname "$0")/custom")"
+
+    mkdir -p /var/local/pacman
+    ln -snvf "$repo_path" /var/local/pacman/custom
+
+    awk -i inplace '/\[core\]/ {\
+print "[custom]\n\
+SigLevel = Optional TrustAll\n\
+Server = file:///var/local/pacman/custom\n\
+"}1' /etc/pacman.conf
+
+    pacman -Sy
+  fi
+}
+
 # shellcheck disable=SC1004
 install_base() {
   local extra_pkgs=(
@@ -346,6 +367,19 @@ install_base() {
   info "Copying zpool.cache"
   mkdir -pv /mnt/etc/zfs
   cp -v /etc/zfs/zpool.cache /mnt/etc/zfs/
+
+  if [ -d "$(dirname "$0")/custom" ]; then
+    info "Adding the custom repository to pacman.conf"
+    mkdir -pv /mnt/var/local/pacman
+    cp -rv "$(dirname "$0")/custom" /mnt/var/local/pacman/
+
+    awk -i inplace '/\[core\]/ {\
+print "[custom]\n\
+SigLevel = Optional TrustAll\n\
+Server = file:///var/local/pacman/custom\n\
+"}1' /mnt/etc/pacman.conf
+
+  fi
 
   info "Adding the archzfs repository to pacman.conf"
   awk -i inplace '/\[core\]/ {\
