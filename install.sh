@@ -360,6 +360,7 @@ install_base() {
     zfs-linux
     intel-ucode grub efibootmgr os-prober
     openssh sudo pacman-contrib
+    terminus-font
   )
 
   pacstrap /mnt base
@@ -440,8 +441,11 @@ install_grub() {
   in_chroot \
     "ZPOOL_VDEV_NAME_PATH=1 grub-mkconfig -o /boot/grub/grub.cfg"
 
+  info "Creating vconsole.conf for larger console font"
+  echo "FONT=ter-132n" > /mnt/etc/vconsole.conf
+
   info "Modifying HOOKS in mkinitcpio.conf"
-  sed -i 's|^HOOKS=.*|HOOKS="base udev autodetect modconf block keyboard encrypt zfs filesystems shutdown"|g' /mnt/etc/mkinitcpio.conf
+  sed -i 's|^HOOKS=.*|HOOKS="base udev autodetect modconf block consolefont keyboard encrypt zfs filesystems shutdown"|g' /mnt/etc/mkinitcpio.conf
 
   info "Update initial ramdisk (initrd) with ZFS support"
   in_chroot "mkinitcpio -p linux"
