@@ -53,3 +53,11 @@ is_in_vmware() {
     return 1
   fi
 }
+
+is_in_dell_xps_13() {
+  if [ "$(cat /sys/class/dmi/id/product_name)" = "XPS 13 9370" ]; then
+    return 0
+  else
+    return 1
+  fi
+}

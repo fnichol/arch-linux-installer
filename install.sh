@@ -433,6 +433,13 @@ install_grub() {
       /mnt/etc/default/grub
   fi
 
+  if is_in_dell_xps_13; then
+    info "Adding deep sleep support for Dell XPS"
+    sed -i \
+      -e 's,^\(GRUB_CMDLINE_LINUX_DEFAULT\)="\(.*\)"$,\1="\2 mem_sleep_default=deep",' \
+      /mnt/etc/default/grub
+  fi
+
   info "Installing GRUB"
   in_chroot \
     "ZPOOL_VDEV_NAME_PATH=1 grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB"
@@ -455,6 +462,13 @@ install_hardware_specific_pkgs() {
   if is_in_vmware; then
     info "Installing VMware-specific software"
     in_chroot "pacman -S --noconfirm open-vm-tools"
+  fi
+
+  if is_in_dell_xps_13; then
+    # Thanks to: http://www.saminiir.com/configuring-arch-linux-on-dell-xps-15/
+    info "Enabling 'laptop-mode' in Kernel for Dell XPS 13"
+    mkdir -p /mnt/etc/sysctl.d
+    echo "vm.laptop_mode = 5" > /mnt/etc/sysctl.d/laptop.conf
   fi
 }
 
