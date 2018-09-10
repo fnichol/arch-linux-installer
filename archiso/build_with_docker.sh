@@ -8,7 +8,7 @@ main() {
     --rm \
     --privileged \
     --volume "$(pwd)":/mnt \
-    greyltc/archlinux \
+    "${DOCKER_IMAGE:-greyltc/archlinux}" \
     "/mnt/$(dirname "$0")/build_archiso.sh"
 }
 
