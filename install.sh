@@ -344,6 +344,7 @@ add_custom_repo() {
     mkdir -p /var/local/pacman
     ln -snvf "$repo_path" /var/local/pacman/custom
 
+    # shellcheck disable=SC1004
     awk -i inplace '/\[core\]/ {\
 print "[custom]\n\
 SigLevel = Optional TrustAll\n\
@@ -354,7 +355,6 @@ Server = file:///var/local/pacman/custom\n\
   fi
 }
 
-# shellcheck disable=SC1004
 install_base() {
   local extra_pkgs=(
     zfs-linux
@@ -374,6 +374,7 @@ install_base() {
     mkdir -pv /mnt/var/local/pacman
     cp -rv "$(dirname "$0")/custom" /mnt/var/local/pacman/
 
+    # shellcheck disable=SC1004
     awk -i inplace '/\[core\]/ {\
 print "[custom]\n\
 SigLevel = Optional TrustAll\n\
@@ -383,6 +384,7 @@ Server = file:///var/local/pacman/custom\n\
   fi
 
   info "Adding the archzfs repository to pacman.conf"
+  # shellcheck disable=SC1004
   awk -i inplace '/\[core\]/ {\
 print "[archzfs]\n\
 SigLevel = Optional TrustAll\n\
