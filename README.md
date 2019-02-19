@@ -41,3 +41,78 @@ wget https://archive.archlinux.org/repos/2018/04/19/core/os/x86_64/linux-4.16.2-
 wget https://archive.archlinux.org/repos/2018/04/19/core/os/x86_64/linux-headers-4.16.2-2-x86_64.pkg.tar.xz
 repo-add custom.db.tar.xz *.pkg.tar.*
 ```
+
+## Recovering a System with ArchISO
+
+### Login
+
+```
+wifi-menu
+```
+
+```
+ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@$host
+```
+
+### Find Partitions
+
+```
+pool=tank
+```
+
+```
+fdisk -l | grep 'EFI System$'
+```
+
+```
+esp_dev=/dev/nvme0n1p2
+```
+
+### (Optional) Opening Encrypted Partitions
+
+```
+ls -l /dev/disk/by-id/*
+```
+
+```
+partid=/dev/disk/by-id/nvme-eui.000000000000001000080d02003ec7ee-part6
+```
+
+```
+cryptsetup open --type luks "$partid" cryptroot
+```
+
+### Mount Filesystems
+
+```
+zpool import -d /dev/disk/by-id -R /mnt "$pool"
+```
+
+```
+mount "$esp_dev" /mnt/boot/efi
+```
+
+### Chroot into System
+
+```
+arch-chroot /mnt /bin/bash
+```
+
+```
+exit
+```
+
+### Unmount Filesystems
+
+```
+umount /mnt/boot/efi
+zfs umount -a
+zpool export "$pool"
+```
+
+### Reboot
+
+```
+reboot
+```
+
