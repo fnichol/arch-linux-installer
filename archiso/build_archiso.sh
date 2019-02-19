@@ -75,7 +75,7 @@ add_custom_repo() {
         echo ''
       fi
       echo "$line"
-    done > "$workdir/pacman.conf.new"
+    done >"$workdir/pacman.conf.new"
     mv -v "$workdir/pacman.conf.new" "$workdir/pacman.conf"
   fi
 }
@@ -91,20 +91,20 @@ add_zfs_repo() {
       echo ''
     fi
     echo "$line"
-  done > "$workdir/pacman.conf.new"
+  done >"$workdir/pacman.conf.new"
   mv -v "$workdir/pacman.conf.new" "$workdir/pacman.conf"
 }
 
 add_zfs_package() {
   info "Adding the archzfs-linux package to the image"
 
-  echo "archzfs-linux" >> "$workdir/packages.x86_64"
+  echo "archzfs-linux" >>"$workdir/packages.x86_64"
 }
 
 add_openssh() {
   info "Adding the OpenSSH to the image"
 
-  cat <<'EOF' >> "$workdir/airootfs/root/customize_airootfs.sh"
+  cat <<'EOF' >>"$workdir/airootfs/root/customize_airootfs.sh"
 
 # Add user arch with no home directory, in group 'wheel' and using 'zsh'
 useradd -M -G wheel -s /usr/bin/zsh arch
