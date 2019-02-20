@@ -2,7 +2,15 @@
 
 main() {
   set -eu
-  if [ -n "${DEBUG:-}" ]; then set -x; fi
+  if [[ -n "${DEBUG:-}" ]]; then set -x; fi
+
+  need_cmd basename
+  need_cmd cat
+  need_cmd cp
+  need_cmd mkdir
+  need_cmd mktemp
+  need_cmd pacman
+  need_cmd rm
 
   program="$(basename "$0")"
   workdir="$(mktemp -d -p /home -t "$(basename "$0")".XXXXXXXX)" || exit 12
@@ -19,12 +27,12 @@ main() {
 }
 
 cleanup() {
-  e=$?
+  local e=$?
   info "Cleanup up $workdir"
-  rm -rf $workdir
-  if [ -n "${web_pid:-}" ]; then
+  rm -rf "$workdir"
+  if [[ -n "${web_pid:-}" ]]; then
     info "Stopping web server"
-    kill $web_pid
+    kill "$web_pid"
   fi
   exit $e
 }
@@ -41,6 +49,24 @@ info() {
   return 0
 }
 
+exit_with() {
+  case "${TERM:-}" in
+    *term | xterm-* | rxvt | screen | screen-*)
+      printf -- "\n\033[1;31mERROR: \033[1;37m%s\033[0m\n\n" "${1:-}" >&2
+      ;;
+    *)
+      printf -- "\nERROR: %s\n\n" "${1:-}" >&2
+      ;;
+  esac
+  exit "${2:-10}"
+}
+
+need_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    exit_with "Required command '$1' not found on PATH" 127
+  fi
+}
+
 prepare() {
   info "Preparing system and $workdir"
 
@@ -53,10 +79,12 @@ prepare() {
 }
 
 add_custom_repo() {
-  if [ -d "$(dirname "$0")/custom" ]; then
+  if [[ -d "$(dirname "$0")/custom" ]]; then
+    local web_pid line
     info "Adding custom repository to the image"
 
     pacman -S --noconfirm ruby
+    need_cmd ruby
 
     ruby -rwebrick -e"
       WEBrick::HTTPServer.new(
@@ -67,31 +95,33 @@ add_custom_repo() {
     sleep 1
     web_pid=$!
 
-    cat "$workdir/pacman.conf" | while read -r line; do
-      if [ "$line" = '[core]' ]; then
+    while read -r line; do
+      if [[ "$line" == '[core]' ]]; then
         echo '[custom]'
         echo 'SigLevel = Optional TrustAll'
         echo 'Server = http://127.0.0.1:8000'
         echo ''
       fi
       echo "$line"
-    done >"$workdir/pacman.conf.new"
+    done <"$workdir/pacman.conf" >"$workdir/pacman.conf.new"
     mv -v "$workdir/pacman.conf.new" "$workdir/pacman.conf"
   fi
 }
 
 add_zfs_repo() {
+  local line
   info "Adding archzfs repository to the image"
 
-  cat "$workdir/pacman.conf" | while read -r line; do
-    if [ "$line" = '[core]' ]; then
+  while read -r line; do
+    if [[ "$line" == '[core]' ]]; then
       echo '[archzfs]'
       echo 'SigLevel = Optional TrustAll'
+      # shellcheck disable=SC2016
       echo 'Server = http://archzfs.com/$repo/x86_64'
       echo ''
     fi
     echo "$line"
-  done >"$workdir/pacman.conf.new"
+  done <"$workdir/pacman.conf" >"$workdir/pacman.conf.new"
   mv -v "$workdir/pacman.conf.new" "$workdir/pacman.conf"
 }
 
