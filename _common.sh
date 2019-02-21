@@ -3,10 +3,10 @@
 info() {
   case "${TERM:-}" in
     *term | xterm-* | rxvt | screen | screen-*)
-      printf -- "   \\033[1;36m%s: \\033[1;37m%s\\033[0m\\n" "${program}" "${1:-}"
+      printf -- "   \033[1;36;40m%s: \033[1;37;40m%s\033[0m\n" "${program}" "${1:-}"
       ;;
     *)
-      printf -- "   %s: %s\\n" "${program}" "${1:-}"
+      printf -- "   %s: %s\n" "${program}" "${1:-}"
       ;;
   esac
   return 0
