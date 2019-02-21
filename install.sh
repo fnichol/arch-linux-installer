@@ -21,6 +21,7 @@ main() {
   find_esp_dev
   create_esp
   encrypt_partition
+  set_zpool_dev
   create_zpool
   create_datasets
   prepare_pool
@@ -260,18 +261,25 @@ create_esp() {
 }
 
 encrypt_partition() {
-  if [[ -z "${ENCRYPT:-}" ]]; then
+  if [[ -n "${ENCRYPT:-}" ]]; then
+    info "Encrypting $partid partition"
+    cryptsetup luksFormat \
+      --cipher aes-xts-plain64 \
+      --hash sha512 \
+      "$partid"
+    cryptsetup open --type luks "$partid" cryptroot
+  fi
+}
+
+set_zpool_dev() {
+  if [[ -n "${ENCRYPT:-}" ]]; then
+    zpool_dev="/dev/mapper/cryptroot"
+  else
+    # If no encryption is used, then set the zpool device to the partid
     zpool_dev="$partid"
-    return
   fi
 
-  cryptsetup luksFormat \
-    --cipher aes-xts-plain64 \
-    --hash sha512 \
-    "$partid"
-  cryptsetup open --type luks "$partid" cryptroot
-
-  zpool_dev="/dev/mapper/cryptroot"
+  info "Using the $zpool_dev for the zpool device"
 }
 
 create_zpool() {
