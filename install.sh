@@ -283,14 +283,13 @@ set_zpool_dev() {
 }
 
 create_zpool() {
-  # Load the ZFS kernel module
+  info "Loading the ZFS kernel module"
   modprobe zfs
 
-  # Create the root pool
+  info "Creating the root zpool '$pool' on $zpool_dev"
   zpool create -f "$pool" "$zpool_dev"
 
-  # Set default tunings for pool
-  #
+  info "Setting default ZFS tunings for $pool"
   # See: https://wiki.archlinux.org/index.php/ZFS#General_2
   zfs set compression=on "$pool"
   zfs set atime=on "$pool"
@@ -298,46 +297,48 @@ create_zpool() {
 }
 
 create_datasets() {
-  # Setup to support ZFS boot environments
-  #
+  info "Creating ZFS datasets to support ZFS boot environments"
   # See: https://wiki.archlinux.org/index.php/Installing_Arch_Linux_on_ZFS#Create_your_datasets
   zfs create -o mountpoint=none "$pool/ROOT"
   zfs create -o mountpoint=/ -o compression=lz4 "$pool/ROOT/default" || true
 
-  # Create dataset for home
+  info "Creating ZFS dataset for /home"
   zfs create -o mountpoint=/home -o compression=lz4 "$pool/home"
 }
 
 prepare_pool() {
-  # Unmoiunt datasets
+  info "Unmounting all ZFS datasets"
   zfs umount -a
 
-  # Set mountpoints for datasets
+  info "Setting mountpoints for ZFS datasets"
   zfs set mountpoint=/ "$pool/ROOT/default"
   zfs set mountpoint=/home "$pool/home"
 
+  info "Writing out initial /etc/fstab"
   cat <<EOF >/etc/fstab
 $pool/ROOT/default	/	zfs	defaults,noatime	0 0
 EOF
 
+  info "Setting bootfs property on $pool/ROOT/default"
   # Set the bootfs property on the descendant root filesystem so the boot
   # loader knows where to find the operating system.
   zpool set bootfs="$pool/ROOT/default" "$pool"
 
-  # Export the pool
+  info "Exporting the pool $pool"
   zpool export "$pool"
 }
 
 mount_pool_for_install() {
-  # Re-import the pool
+  info "Re-importing the pool $pool"
   zpool import -d /dev/disk/by-id -R /mnt "$pool"
 
-  # Mount ESP
+  info "Mounting the EFI System Partition (ESP) device $esp_dev"
   mkdir -pv /mnt/boot/efi
   mount "$esp_dev" /mnt/boot/efi
 }
 
 gen_fstab() {
+  info "Using genfstab to generate system /etc/fstab"
   mkdir -pv /mnt/etc
   genfstab -U -p /mnt | grep -E ROOT/default >/mnt/etc/fstab
 }
@@ -371,6 +372,7 @@ install_base() {
     terminus-font
   )
 
+  info "Bootstrapping base installation with pacstrap"
   pacstrap /mnt base
 
   info "Copying zpool.cache"
