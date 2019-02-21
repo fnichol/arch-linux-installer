@@ -30,6 +30,7 @@ main() {
   gen_fstab
   add_custom_repo
   install_base
+  setup_zpool_cache
   set_root_passwd
   enable_services
   install_grub
@@ -375,10 +376,6 @@ install_base() {
   info "Bootstrapping base installation with pacstrap"
   pacstrap /mnt base
 
-  info "Copying zpool.cache"
-  mkdir -pv /mnt/etc/zfs
-  cp -v /etc/zfs/zpool.cache /mnt/etc/zfs/
-
   if [ -d "$(dirname "$0")/custom" ]; then
     info "Adding the custom repository to pacman.conf"
     mkdir -pv /mnt/var/local/pacman
@@ -413,6 +410,18 @@ Server = http://archzfs.com/$repo/x86_64\n\
 
   info "Remove default .bashrc in /etc/skell"
   in_chroot "rm -f /etc/skel/.bashrc"
+}
+
+setup_zpool_cache() {
+  info "Clearing zpool cachefile property for $pool"
+  in_chroot "zpool set cachefile=none $pool"
+
+  info "Copying zpool.cache"
+  mkdir -pv /mnt/etc/zfs
+  cp -v /etc/zfs/zpool.cache /mnt/etc/zfs/
+
+  info "Setting zpool cachefile property for $pool"
+  in_chroot "zpool set cachefile=/etc/zfs/zpool.cache $pool"
 }
 
 set_root_passwd() {
