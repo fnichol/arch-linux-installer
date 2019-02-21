@@ -421,16 +421,20 @@ set_root_passwd() {
 }
 
 enable_services() {
-  info "Enable zfs.target service"
-  in_chroot "systemctl enable zfs.target"
-  info "Enable zfs-mount service"
-  in_chroot "systemctl enable zfs-mount"
+  local service
+  local services=(
+    zfs.target
+    zfs-import-cache
+    zfs-mount
+    zfs-import.target
+    "dhcpd@${NETIF}.service"
+    sshd.socket
+  )
 
-  info "Enabling dhcpd@${NETIF} networking service"
-  in_chroot "systemctl enable dhcpcd@${NETIF}.service"
-
-  info "Enabling sshd service"
-  in_chroot "systemctl enable sshd.socket"
+  for service in "${services[@]}"; do
+    info "Enabling '$service' service"
+    in_chroot "systemctl enable $service"
+  done
 }
 
 install_grub() {
