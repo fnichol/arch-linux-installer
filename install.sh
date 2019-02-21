@@ -104,7 +104,7 @@ parse_cli_args() {
         ;;
       p)
         case "$OPTARG" in
-          existing|remaining|whole)
+          existing | remaining | whole)
             # skip
             ;;
           *)
@@ -220,7 +220,7 @@ find_partid() {
 
   while [ $retries -lt 5 ]; do
     for diskid in /dev/disk/by-id/*; do
-      if [[ "$(readlink -f "$diskid")" = "/dev/$partition" ]]; then
+      if [[ "$(readlink -f "$diskid")" == "/dev/$partition" ]]; then
         partid="$diskid"
         info "Found partition ID for /dev/$partition: $partid"
         return
@@ -308,7 +308,7 @@ prepare_pool() {
   zfs set mountpoint=/ "$pool/ROOT/default"
   zfs set mountpoint=/home "$pool/home"
 
-  cat <<EOF > /etc/fstab
+  cat <<EOF >/etc/fstab
 $pool/ROOT/default	/	zfs	defaults,noatime	0 0
 EOF
 
@@ -331,7 +331,7 @@ mount_pool_for_install() {
 
 gen_fstab() {
   mkdir -pv /mnt/etc
-  genfstab -U -p /mnt | grep -E ROOT/default > /mnt/etc/fstab
+  genfstab -U -p /mnt | grep -E ROOT/default >/mnt/etc/fstab
 }
 
 add_custom_repo() {
@@ -451,7 +451,7 @@ install_grub() {
     "ZPOOL_VDEV_NAME_PATH=1 grub-mkconfig -o /boot/grub/grub.cfg"
 
   info "Creating vconsole.conf for larger console font"
-  echo "FONT=ter-132n" > /mnt/etc/vconsole.conf
+  echo "FONT=ter-132n" >/mnt/etc/vconsole.conf
 
   info "Modifying HOOKS in mkinitcpio.conf"
   sed -i 's|^HOOKS=.*|HOOKS="base udev autodetect modconf block consolefont keyboard encrypt zfs filesystems shutdown"|g' /mnt/etc/mkinitcpio.conf
@@ -470,7 +470,7 @@ install_hardware_specific_pkgs() {
     # Thanks to: http://www.saminiir.com/configuring-arch-linux-on-dell-xps-15/
     info "Enabling 'laptop-mode' in Kernel for Dell XPS 13"
     mkdir -p /mnt/etc/sysctl.d
-    echo "vm.laptop_mode = 5" > /mnt/etc/sysctl.d/laptop.conf
+    echo "vm.laptop_mode = 5" >/mnt/etc/sysctl.d/laptop.conf
   fi
 }
 
@@ -497,7 +497,7 @@ setup_clock() {
     in_chroot "vmware-toolbox-cmd timesync enable"
 
     info "Creating hwclock-resume service unit to update clock after sleep"
-    cat <<'EOF' > /mnt/etc/systemd/system/hwclock-resume.service
+    cat <<'EOF' >/mnt/etc/systemd/system/hwclock-resume.service
 [Unit]
 Description=Update hardware clock after resuming from sleep
 After=suspend.target
@@ -525,11 +525,12 @@ generate_locales() {
   for l in "${locales[@]}"; do
     # shellcheck disable=SC1117
     sed -i "s|^#\(${l}\)|\1|" /mnt/etc/locale.gen
-  done; unset l
+  done
+  unset l
   info "Generating locales for ${locales[*]}"
   in_chroot "locale-gen"
   info "Setting default locale to $default_locale"
-  echo "LANG=$default_locale" > /mnt/etc/locale.conf
+  echo "LANG=$default_locale" >/mnt/etc/locale.conf
 }
 
 find_fastest_mirrors() {
@@ -581,7 +582,7 @@ setup_x() {
   if is_in_vmware; then
     local f=/mnt/etc/X11/xinit/xinitrc.d/10-vmware.sh
     info "Adding vmware-user-suid-wrapper to xinitirc.d"
-    echo "/usr/sbin/vmware-user-suid-wrapper" > "$f"
+    echo "/usr/sbin/vmware-user-suid-wrapper" >"$f"
     chmod -v 755 "$f"
   fi
 
