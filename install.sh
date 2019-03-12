@@ -305,6 +305,9 @@ create_datasets() {
 
   info "Creating ZFS dataset for /home"
   zfs create -o mountpoint=/home -o compression=lz4 "$pool/home"
+
+  info "Creating ZFS dataset for /root"
+  zfs create -o mountpoint=/root -o compression=lz4 "$pool/home/root"
 }
 
 prepare_pool() {
@@ -314,6 +317,7 @@ prepare_pool() {
   info "Setting mountpoints for ZFS datasets"
   zfs set mountpoint=/ "$pool/ROOT/default"
   zfs set mountpoint=/home "$pool/home"
+  zfs set mountpoint=/root "$pool/home/root"
 
   info "Writing out initial /etc/fstab"
   cat <<EOF >/etc/fstab
