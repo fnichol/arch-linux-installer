@@ -288,7 +288,7 @@ create_zpool() {
   modprobe zfs
 
   info "Creating the root zpool '$pool' on $zpool_dev"
-  zpool create -f "$pool" "$zpool_dev"
+  zpool create -m none -f "$pool" "$zpool_dev"
 
   info "Setting default ZFS tunings for $pool"
   # See: https://wiki.archlinux.org/index.php/ZFS#General_2
