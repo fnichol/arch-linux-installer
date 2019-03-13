@@ -440,7 +440,7 @@ enable_services() {
     zfs-import-cache
     zfs-mount
     zfs-import.target
-    "dhcpd@${NETIF}.service"
+    "dhcpcd@${NETIF}.service"
     sshd.socket
   )
 
