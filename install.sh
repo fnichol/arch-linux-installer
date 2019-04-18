@@ -6,13 +6,22 @@ main() {
 
   version='0.1.0'
   author='Fletcher Nichol <fnichol@nichol.ca>'
-  program="$(basename "$0")"
+  PROGRAM="$(basename "$0")"
 
   # shellcheck source=_common.sh
   . "${0%/*}/_common.sh"
 
-  # The name of the zpool
-  pool=tank
+  local arch
+  arch="$(uname -m)"
+
+  # The name of the root zpool
+  POOL=tank
+  # The name of the override repo
+  OVERRIDE_REPO=override
+  # The parent path of all local repos
+  REPO_PATH_PREFIX=/var/local/pacman
+  # The parent path of the override repo
+  REPO_PATH="$REPO_PATH_PREFIX/$OVERRIDE_REPO/$arch"
 
   parse_cli_args "$@"
 
@@ -28,7 +37,8 @@ main() {
   mount_pool_for_install
 
   gen_fstab
-  add_custom_repo
+  add_bootstrap_repo_keys
+  add_bootstrap_override_repo
   install_base
   setup_zpool_cache
   set_root_passwd
@@ -53,20 +63,23 @@ main() {
 }
 
 print_help() {
-  echo "$program $version
+  echo "$PROGRAM $version
 
 $author
 
 Arch Linux with ZFS installer.
 
 USAGE:
-        $program [FLAGS] [OPTIONS] <DISK> <NETIF>
+        $PROGRAM [FLAGS] [OPTIONS] <DISK> <NETIF>
 
 FLAGS:
     -e  Encrypt the partition for the zpool (default: no)
     -h  Prints this message
     -V  Prints version information
-    -X  Skip installation and setup of GUI/X environment (default: install)
+    -x  Installs GUI/X (default: no)
+    -X  Skips installation and setup of GUI/X (default: yes)
+    -w  Installs GUI/Wayland (default: no)
+    -W  Skips installation and setup of GUI/Wayland (default: yes)
 
 OPTIONS:
     -a <PARTITION>            Choose a partition for type partition
@@ -91,12 +104,10 @@ parse_cli_args() {
   PART_TYPE=whole
   # Default timezone to UTC
   TZ=UTC
-  # Default installation of X to true
-  INSTALL_X=true
 
   OPTIND=1
   # Parse command line flags and options
-  while getopts ":a:ep:P:t:XVh" opt; do
+  while getopts ":a:ep:P:t:xXVwWh" opt; do
     case $opt in
       a)
         PARTITION="$OPTARG"
@@ -126,12 +137,21 @@ parse_cli_args() {
       t)
         TZ="$OPTARG"
         ;;
+      x)
+        INSTALL_X=true
+        ;;
       X)
         unset INSTALL_X
         ;;
       V)
-        echo "$program $version"
+        echo "$PROGRAM $version"
         exit 0
+        ;;
+      w)
+        INSTALL_WAYLAND=true
+        ;;
+      W)
+        unset INSTALL_WAYLAND
         ;;
       h)
         print_help
@@ -220,7 +240,7 @@ partition_disk() {
 find_partid() {
   local retries=0
 
-  while [ $retries -lt 5 ]; do
+  while [[ $retries -lt 5 ]]; do
     for diskid in /dev/disk/by-id/*; do
       if [[ "$(readlink -f "$diskid")" == "/dev/$partition" ]]; then
         partid="$diskid"
@@ -287,27 +307,27 @@ create_zpool() {
   info "Loading the ZFS kernel module"
   modprobe zfs
 
-  info "Creating the root zpool '$pool' on $zpool_dev"
-  zpool create -m none -f "$pool" "$zpool_dev"
+  info "Creating the root zpool '$POOL' on $zpool_dev"
+  zpool create -m none -f "$POOL" "$zpool_dev"
 
-  info "Setting default ZFS tunings for $pool"
+  info "Setting default ZFS tunings for $POOL"
   # See: https://wiki.archlinux.org/index.php/ZFS#General_2
-  zfs set compression=on "$pool"
-  zfs set atime=on "$pool"
-  zfs set relatime=on "$pool"
+  zfs set compression=on "$POOL"
+  zfs set atime=on "$POOL"
+  zfs set relatime=on "$POOL"
 }
 
 create_datasets() {
   info "Creating ZFS datasets to support ZFS boot environments"
   # See: https://wiki.archlinux.org/index.php/Installing_Arch_Linux_on_ZFS#Create_your_datasets
-  zfs create -o mountpoint=none "$pool/ROOT"
-  zfs create -o mountpoint=/ -o compression=lz4 "$pool/ROOT/default" || true
+  zfs create -o mountpoint=none "$POOL/ROOT"
+  zfs create -o mountpoint=/ -o compression=lz4 "$POOL/ROOT/default" || true
 
   info "Creating ZFS dataset for /home"
-  zfs create -o mountpoint=/home -o compression=lz4 "$pool/home"
+  zfs create -o mountpoint=/home -o compression=lz4 "$POOL/home"
 
   info "Creating ZFS dataset for /root"
-  zfs create -o mountpoint=/root -o compression=lz4 "$pool/home/root"
+  zfs create -o mountpoint=/root -o compression=lz4 "$POOL/home/root"
 }
 
 prepare_pool() {
@@ -315,27 +335,27 @@ prepare_pool() {
   zfs umount -a
 
   info "Setting mountpoints for ZFS datasets"
-  zfs set mountpoint=/ "$pool/ROOT/default"
-  zfs set mountpoint=/home "$pool/home"
-  zfs set mountpoint=/root "$pool/home/root"
+  zfs set mountpoint=/ "$POOL/ROOT/default"
+  zfs set mountpoint=/home "$POOL/home"
+  zfs set mountpoint=/root "$POOL/home/root"
 
   info "Writing out initial /etc/fstab"
-  cat <<EOF >/etc/fstab
-$pool/ROOT/default	/	zfs	defaults,noatime	0 0
-EOF
+  cat <<-EOF >/etc/fstab
+		$POOL/ROOT/default	/	zfs	defaults,noatime	0 0
+		EOF
 
-  info "Setting bootfs property on $pool/ROOT/default"
+  info "Setting bootfs property on $POOL/ROOT/default"
   # Set the bootfs property on the descendant root filesystem so the boot
   # loader knows where to find the operating system.
-  zpool set bootfs="$pool/ROOT/default" "$pool"
+  zpool set bootfs="$POOL/ROOT/default" "$POOL"
 
-  info "Exporting the pool $pool"
-  zpool export "$pool"
+  info "Exporting the pool $POOL"
+  zpool export "$POOL"
 }
 
 mount_pool_for_install() {
-  info "Re-importing the pool $pool"
-  zpool import -d /dev/disk/by-id -R /mnt "$pool"
+  info "Re-importing the pool $POOL"
+  zpool import -d /dev/disk/by-id -R /mnt "$POOL"
 
   info "Mounting the EFI System Partition (ESP) device $esp_dev"
   mkdir -pv /mnt/boot/efi
@@ -348,24 +368,29 @@ gen_fstab() {
   genfstab -U -p /mnt | grep -E ROOT/default >/mnt/etc/fstab
 }
 
-add_custom_repo() {
-  local repo_path
+add_bootstrap_repo_keys() {
+  info "Adding [archzfs] repository key to archiso"
+  pacman-key -r F75D9D76
+  pacman-key --lsign-key F75D9D76
+}
 
-  if [ -d "$(dirname "$0")/custom" ]; then
-    info "Detected and adding a custom repository to pacman.conf"
-    repo_path="$(readlink -f "$(dirname "$0")/custom")"
+add_bootstrap_override_repo() {
+  if has_local_override_repo; then
+    local local_repo_path
+    local_repo_path="$(readlink -f "$(dirname "$0")/$OVERRIDE_REPO")"
 
-    mkdir -p /var/local/pacman
-    ln -snvf "$repo_path" /var/local/pacman/custom
+    info "Detected [$OVERRIDE_REPO] repository to use for bootstrapping"
 
-    # shellcheck disable=SC1004
-    awk -i inplace '/\[core\]/ {\
-print "[custom]\n\
-SigLevel = Optional TrustAll\n\
-Server = file:///var/local/pacman/custom\n\
-"}1' /etc/pacman.conf
+    mkdir -pv "$REPO_PATH"
+    cp -rv "$local_repo_path"/*.pkg.tar.xz* "$REPO_PATH"
 
-    pacman -Sy
+    find "$REPO_PATH" -name '*.pkg.tar.xz' -print0 \
+      | xargs -0 repo-add "$REPO_PATH/$OVERRIDE_REPO.db.tar.xz"
+
+    info "Adding [$OVERRIDE_REPO] repository to /etc/pacman.conf"
+    insert_into_pacman_conf "$(override_repo_block)" /etc/pacman.conf
+
+    pacman -Sy --noconfirm
   fi
 }
 
@@ -380,34 +405,24 @@ install_base() {
   info "Bootstrapping base installation with pacstrap"
   pacstrap /mnt base
 
-  if [ -d "$(dirname "$0")/custom" ]; then
-    info "Adding the custom repository to pacman.conf"
-    mkdir -pv /mnt/var/local/pacman
-    cp -rv "$(dirname "$0")/custom" /mnt/var/local/pacman/
-
-    # shellcheck disable=SC1004
-    awk -i inplace '/\[core\]/ {\
-print "[custom]\n\
-SigLevel = Optional TrustAll\n\
-Server = file:///var/local/pacman/custom\n\
-"}1' /mnt/etc/pacman.conf
-
-  fi
-
-  info "Adding the archzfs repository to pacman.conf"
-  # shellcheck disable=SC1004
-  awk -i inplace '/\[core\]/ {\
-print "[archzfs]\n\
-SigLevel = Optional TrustAll\n\
-Server = http://archzfs.com/$repo/x86_64\n\
-"}1' /mnt/etc/pacman.conf
-
-  info "Adding archzfs repository key"
-  in_chroot \
-    "pacman-key -r 5E1ABF240EE7A126 && pacman-key --lsign-key 5E1ABF240EE7A126"
+  add_override_repo
+  add_archzfs_repo
 
   info "Installing extra base packages"
-  in_chroot "pacman -Sy; pacman -S --noconfirm ${extra_pkgs[*]}"
+  in_chroot "pacman -Sy --noconfirm; pacman -S --noconfirm ${extra_pkgs[*]}"
+
+  # The exit code of the previous failed pacman install with be `0` regardless
+  # of whether the installation was successful. Any version mismatching of
+  # ZFS-related packages and the current Linux kernel will result in a detected
+  # "unable to satisfy dependency" which is considered a successful termination
+  # of the program. Instead of relying on the exit code of the previous
+  # command, we'll check if one of the packages has been installed and assume
+  # that if it is not, then the entire set has failed and terminate the
+  # program.
+  if ! in_chroot "pacman -Qi zfs-linux" >/dev/null 2>&1; then
+    exit_with \
+      "Installation of zfs-linux failed, check kernel version support" 21
+  fi
 
   info "Setting sudoers policy"
   in_chroot "echo '%wheel ALL=(ALL) ALL' > /etc/sudoers.d/01_wheel"
@@ -416,16 +431,44 @@ Server = http://archzfs.com/$repo/x86_64\n\
   in_chroot "rm -f /etc/skel/.bashrc"
 }
 
+add_override_repo() {
+  local mounted_repo_path
+  mounted_repo_path="/mnt$REPO_PATH"
+
+  info "Creating [$OVERRIDE_REPO] repository root $mounted_repo_path"
+  mkdir -pv "$mounted_repo_path"
+
+  if has_local_override_repo; then
+    info "Copying local [$OVERRIDE_REPO] repository packages to system"
+    cp -rv "$(dirname "$0")/$OVERRIDE_REPO"/*.pkg.tar.xz* "$mounted_repo_path"
+  fi
+
+  info "Preparing [$OVERRIDE_REPO] repository locally"
+  in_chroot "find $REPO_PATH -name '*.pkg.tar.xz' -print0 \
+      | xargs -0 repo-add $REPO_PATH/$OVERRIDE_REPO.db.tar.xz"
+
+  info "Adding [$OVERRIDE_REPO] repository to /mnt/etc/pacman.conf"
+  insert_into_pacman_conf "$(override_repo_block)" /mnt/etc/pacman.conf
+}
+
+add_archzfs_repo() {
+  info "Adding [archzfs] repository to /mnt/etc/pacman.conf"
+  insert_into_pacman_conf "$(archzfs_repo_block)" /mnt/etc/pacman.conf
+
+  info "Adding [archzfs] repository key"
+  in_chroot "pacman-key -r F75D9D76 && pacman-key --lsign-key F75D9D76"
+}
+
 setup_zpool_cache() {
-  info "Clearing zpool cachefile property for $pool"
-  in_chroot "zpool set cachefile=none $pool"
+  info "Clearing zpool cachefile property for $POOL"
+  in_chroot "zpool set cachefile=none $POOL"
 
   info "Copying zpool.cache"
   mkdir -pv /mnt/etc/zfs
   cp -v /etc/zfs/zpool.cache /mnt/etc/zfs/
 
-  info "Setting zpool cachefile property for $pool"
-  in_chroot "zpool set cachefile=/etc/zfs/zpool.cache $pool"
+  info "Setting zpool cachefile property for $POOL"
+  in_chroot "zpool set cachefile=/etc/zfs/zpool.cache $POOL"
 }
 
 set_root_passwd() {
@@ -524,18 +567,18 @@ setup_clock() {
     in_chroot "vmware-toolbox-cmd timesync enable"
 
     info "Creating hwclock-resume service unit to update clock after sleep"
-    cat <<'EOF' >/mnt/etc/systemd/system/hwclock-resume.service
-[Unit]
-Description=Update hardware clock after resuming from sleep
-After=suspend.target
+    cat <<-'EOF' >/mnt/etc/systemd/system/hwclock-resume.service
+			[Unit]
+			Description=Update hardware clock after resuming from sleep
+			After=suspend.target
 
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/hwclock --hctosys --utc
+			[Service]
+			Type=oneshot
+			ExecStart=/usr/bin/hwclock --hctosys --utc
 
-[Install]
-WantedBy=suspend.target
-EOF
+			[Install]
+			WantedBy=suspend.target
+			EOF
 
     info "Enabling hwclock-resume service"
     in_chroot "systemctl enable hwclock-resume.service"
@@ -621,8 +664,8 @@ finalize_pool() {
   umount /mnt/boot/efi
   info "Unmounting ZFS datasets"
   zfs umount -a
-  info "Exporting ZFS zpool $pool"
-  zpool export "$pool"
+  info "Exporting ZFS zpool $POOL"
+  zpool export "$POOL"
 
   if [[ -n "${ENCRYPT:-}" ]]; then
     info "Closing cryptoroot"
