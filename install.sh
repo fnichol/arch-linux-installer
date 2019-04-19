@@ -148,6 +148,8 @@ parse_cli_args() {
         exit 0
         ;;
       w)
+        # TODO: remove this
+        # shellcheck disable=SC2034
         INSTALL_WAYLAND=true
         ;;
       W)
