@@ -91,13 +91,16 @@ create_user() {
     --comment "$comment" \
     "$user"
   chown -R "${user}:${user}" "/home/$user"
-  chmod 0750  "/home/$user"
-  (cd "/tmp/$user"; tar cpf - . | tar xpf - -C "/home/$user")
+  chmod 0750 "/home/$user"
+  (
+    cd "/tmp/$user"
+    tar cpf - . | tar xpf - -C "/home/$user"
+  )
   usermod -d "/home/$user" "$user"
   rm -rf "/tmp/$user"
 
   info "Set $user password"
-  chpasswd <<< "$user:$passwd"
+  chpasswd <<<"$user:$passwd"
 }
 
 info() {
