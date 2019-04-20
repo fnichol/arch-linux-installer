@@ -100,19 +100,19 @@ add_override_repo() {
     # Read complex, interpolated string into a $content variable using leading
     # full tab indentation syntax
     read -r -d '' content <<-CONTENT
-			#OVERRIDE_BEGIN
-			[$OVERRIDE_REPO]
-			SigLevel = Optional TrustAll
-			Server = http://127.0.0.1:8000
-			#OVERRIDE_END
-			CONTENT
+	#OVERRIDE_BEGIN
+	[$OVERRIDE_REPO]
+	SigLevel = Optional TrustAll
+	Server = http://127.0.0.1:8000
+	#OVERRIDE_END
+	CONTENT
     insert_into_pacman_conf "$content" "$WORKDIR/pacman.conf"
 
     cat <<-'EOF' >>"$WORKDIR/airootfs/root/customize_airootfs.sh"
 
-			# Remove the temporary [override] repo
-			sed -i -e '/#OVERRIDE_BEGIN/,/#OVERRIDE_END/{N;d;}' /etc/pacman.conf
-			EOF
+	# Remove the temporary [override] repo
+	sed -i -e '/#OVERRIDE_BEGIN/,/#OVERRIDE_END/{N;d;}' /etc/pacman.conf
+	EOF
   fi
 }
 
@@ -135,16 +135,16 @@ add_openssh() {
 
   cat <<-'EOF' >>"$WORKDIR/airootfs/root/customize_airootfs.sh"
 
-		# Add user arch with no home directory, in group 'wheel' and using 'zsh'
-		useradd -M -G wheel -s /usr/bin/zsh arch
+	# Add user arch with no home directory, in group 'wheel' and using 'zsh'
+	useradd -M -G wheel -s /usr/bin/zsh arch
 
-		# Set passwords
-		echo "arch:install" | chpasswd
-		echo "root:install" | chpasswd
+	# Set passwords
+	echo "arch:install" | chpasswd
+	echo "root:install" | chpasswd
 
-		# Enable sshd service
-		systemctl enable sshd.service
-		EOF
+	# Enable sshd service
+	systemctl enable sshd.service
+	EOF
 }
 
 build_image() {

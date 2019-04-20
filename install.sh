@@ -343,8 +343,8 @@ prepare_pool() {
 
   info "Writing out initial /etc/fstab"
   cat <<-EOF >/etc/fstab
-		$POOL/ROOT/default	/	zfs	defaults,noatime	0 0
-		EOF
+	$POOL/ROOT/default	/	zfs	defaults,noatime	0 0
+	EOF
 
   info "Setting bootfs property on $POOL/ROOT/default"
   # Set the bootfs property on the descendant root filesystem so the boot
@@ -570,17 +570,17 @@ setup_clock() {
 
     info "Creating hwclock-resume service unit to update clock after sleep"
     cat <<-'EOF' >/mnt/etc/systemd/system/hwclock-resume.service
-			[Unit]
-			Description=Update hardware clock after resuming from sleep
-			After=suspend.target
+	[Unit]
+	Description=Update hardware clock after resuming from sleep
+	After=suspend.target
 
-			[Service]
-			Type=oneshot
-			ExecStart=/usr/bin/hwclock --hctosys --utc
+	[Service]
+	Type=oneshot
+	ExecStart=/usr/bin/hwclock --hctosys --utc
 
-			[Install]
-			WantedBy=suspend.target
-			EOF
+	[Install]
+	WantedBy=suspend.target
+	EOF
 
     info "Enabling hwclock-resume service"
     in_chroot "systemctl enable hwclock-resume.service"
