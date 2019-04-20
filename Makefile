@@ -8,7 +8,6 @@ prepush: checktools check ## Runs all checks/test required before pushing
 
 test: checktools ## Runs all tests
 check: checktools shellcheck shfmt ## Checks all linting, styling, & other rules
-	@echo "--- $@"
 .PHONY: check
 
 shellcheck: checktools ## Checks shell scripts for linting rules
