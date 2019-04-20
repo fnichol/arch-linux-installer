@@ -4,7 +4,7 @@ main() {
   set -eu
   if [[ -n "${DEBUG:-}" ]]; then set -x; fi
 
-  # shellcheck source=../_common.sh
+  # shellcheck source=_common.sh
   . "${0%/*}/../_common.sh"
 
   need_cmd basename
