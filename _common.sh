@@ -72,16 +72,16 @@ override_repo_block() {
   # Read complex, interpolated string into a $content variable using leading
   # full tab indentation syntax
   read -r -d '' content <<-CONTENT
-		# Local [$OVERRIDE_REPO] repo for temporary pkg pinnings (i.e. kernel, etc.)
-		#
-		# For more information:
-		# * https://wiki.archlinux.org/index.php/Pacman/Tips_and_tricks#Custom_local_repository
-		# * https://wiki.archlinux.org/index.php/downgrading_packages
-		#
-		[$OVERRIDE_REPO]
-		SigLevel = Optional TrustAll
-		Server = file://$REPO_PATH_PREFIX/\$repo/\$arch
-		CONTENT
+	# Local [$OVERRIDE_REPO] repo for temporary pkg pinnings (i.e. kernel, etc.)
+	#
+	# For more information:
+	# * https://wiki.archlinux.org/index.php/Pacman/Tips_and_tricks#Custom_local_repository
+	# * https://wiki.archlinux.org/index.php/downgrading_packages
+	#
+	[$OVERRIDE_REPO]
+	SigLevel = Optional TrustAll
+	Server = file://$REPO_PATH_PREFIX/\$repo/\$arch
+	CONTENT
 
   echo "$content"
 }
@@ -92,14 +92,14 @@ archzfs_repo_block() {
   # Read complex, interpolated string into a $content variable using leading
   # full tab indentation syntax
   read -r -d '' content <<-CONTENT
-		# ZFS on Arch Linux support repo
-		#
-		# For more information:
-		# * https://github.com/archzfs/archzfs/wiki
-		#
-		[archzfs]
-		Server = http://archzfs.com/\$repo/\$arch
-		CONTENT
+	# ZFS on Arch Linux support repo
+	#
+	# For more information:
+	# * https://github.com/archzfs/archzfs/wiki
+	#
+	[archzfs]
+	Server = http://archzfs.com/\$repo/\$arch
+	CONTENT
 
   echo "$content"
 }
