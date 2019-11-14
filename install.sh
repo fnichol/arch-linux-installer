@@ -400,7 +400,7 @@ install_base() {
   local extra_pkgs=(
     zfs-linux
     intel-ucode grub efibootmgr os-prober
-    openssh sudo pacman-contrib
+    dhcpcd openssh sudo pacman-contrib
     terminus-font
   )
 
