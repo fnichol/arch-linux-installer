@@ -486,7 +486,7 @@ enable_services() {
     zfs-mount
     zfs-import.target
     "dhcpcd@${NETIF}.service"
-    sshd.socket
+    sshd.service
   )
 
   for service in "${services[@]}"; do
