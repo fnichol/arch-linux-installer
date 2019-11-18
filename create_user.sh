@@ -8,8 +8,8 @@ main() {
   author='Fletcher Nichol <fnichol@nichol.ca>'
   program="$(basename "$0")"
 
-  # The name of the zpool
-  pool=tank
+  # The name of the root zpool
+  pool=rpool
 
   parse_cli_args "$@"
 
