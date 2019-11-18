@@ -30,10 +30,11 @@ need_cmd() {
 }
 
 read_passwd() {
-  local user="$1"
+  local entity="$1"
+  local retype
 
   while true; do
-    echo -n "Enter password for $user: "
+    echo -n "Enter password for $entity: "
     read -r -s PASSWD
     echo
 
