@@ -14,8 +14,6 @@ main() {
   local arch
   arch="$(uname -m)"
 
-  # The name of the root zpool
-  POOL=tank
   # The name of the override repo
   OVERRIDE_REPO=override
   # The parent path of all local repos
@@ -23,34 +21,59 @@ main() {
   # The parent path of the override repo
   REPO_PATH="$REPO_PATH_PREFIX/$OVERRIDE_REPO/$arch"
 
+  # Parse CLI arguments and set local variables
   parse_cli_args "$@"
+  local boot_pool="$BOOT_POOL"
+  local root_pool="$ROOT_POOL"
+  local part_type="$PART_TYPE"
+  local exist_boot_part="${BOOT_PARTITION:-}"
+  local exist_root_part="${ROOT_PARTITION:-}"
+  local encrypt="${ENCRYPT:-}"
+  local root_pool_passwd="${ROOT_POOL_PASSWD:-}"
+  unset BOOT_POOL ROOT_POOL PART_TYPE BOOT_PARTITION ROOT_PARTITION \
+    ENCRYPT ROOT_POOL_PASSWD
 
-  partition_disk
-  find_partid
-  find_esp_dev
-  create_esp
-  encrypt_partition
-  set_zpool_dev
-  create_zpool
-  create_datasets
-  prepare_pool
-  mount_pool_for_install
+  find_dev "$DISK"
+  local disk_dev="$FIND_DEV"
+  unset FIND_DEV
 
-  gen_fstab
+  # Partition disk and determine partition devices
+  partition_disk "$part_type" "$disk_dev" "$exist_boot_part" "$exist_root_part"
+  local esp_dev="$ESP_DEV"
+  local boot_pool_dev="$BOOT_POOL_DEV"
+  local root_pool_dev="$ROOT_POOL_DEV"
+  unset ESP_DEV BOOT_POOL_DEV ROOT_POOL_DEV
+
+  # Format partitions, create ZFS zpools, and prepare the pools
+  load_zfs
+  format_esp "$part_type" "$esp_dev"
+  create_boot_zpool "$boot_pool" "$boot_pool_dev"
+  create_root_zpool "$root_pool" "$root_pool_dev" "$encrypt" "$root_pool_passwd"
+  create_root_datasets "$root_pool"
+  create_boot_datasets "$boot_pool"
+  prepare_pools "$boot_pool" "$root_pool"
+  mount_pools_for_install \
+    "$esp_dev" "$boot_pool" "$root_pool" "$encrypt" "$root_pool_passwd"
+
+  # Install base system
+  gen_fstab "$root_pool"
   add_bootstrap_repo_keys
   add_bootstrap_override_repo
   install_base
-  setup_zpool_cache
+  setup_zpool_cache "$root_pool"
+  setup_boot_pool_mounting "$boot_pool"
   set_root_passwd
-  enable_services
-  install_grub
+  enable_services "$boot_pool"
+  install_grub "$root_pool"
 
+  # Initially configure base system
   install_hardware_specific_pkgs
   set_timezone
   setup_clock
   generate_locales
   find_fastest_mirrors
 
+  # Prepare user creation script for `root`
   copy_create_user_script
 
   if [[ -n "${INSTALL_X:-}" ]]; then
@@ -58,7 +81,8 @@ main() {
     setup_x
   fi
 
-  finalize_pool
+  # Finalize pools and end installer
+  finalize_pools "$boot_pool" "$root_pool"
   finish
 }
 
@@ -82,12 +106,16 @@ FLAGS:
     -W  Skips installation and setup of GUI/Wayland (default: yes)
 
 OPTIONS:
-    -a <PARTITION>            Choose a partition for type partition
-                              (ex: nvme0n1p5)
+    -b <PARTITION>            Choose a boot partition for type partition
+                              (ex: nvme0n1p3)
+    -E <ROOT_POOL_PASSWD_FILE> Read the root pool password from file
+                              (default: prompt)
     -p <PARTITION_TYPE>       Choose a partitioning type (default: whole)
                               (values: existing, remaining, whole)
     -P <ROOT_PASSWD_FILE>     Read initial root password from file
                               (default: prompt)
+    -r <PARTITION>            Choose a root partition for type partition
+                              (ex: nvme0n1p4)
     -t <TZ>                   Timezone (ex: \`America/Edmonton')
                               (default: \`UTC')
 
@@ -100,6 +128,10 @@ ARGS:
 }
 
 parse_cli_args() {
+  # The name of the boot zpool
+  BOOT_POOL="bpool"
+  # The name of the root zpool
+  ROOT_POOL="rpool"
   # Default partition type to whole
   PART_TYPE=whole
   # Default timezone to UTC
@@ -107,13 +139,20 @@ parse_cli_args() {
 
   OPTIND=1
   # Parse command line flags and options
-  while getopts ":a:ep:P:t:xXVwWh" opt; do
+  while getopts ":b:eE:p:P:r:t:xXVwWh" opt; do
     case $opt in
-      a)
-        PARTITION="$OPTARG"
+      b)
+        BOOT_PARTITION="$OPTARG"
         ;;
       e)
         ENCRYPT=true
+        ;;
+      E)
+        if [ ! -f "$OPTARG" ]; then
+          print_help
+          exit_with "Pool encrypt password file does not exist: $OPTARG" 3
+        fi
+        ROOT_POOL_PASSWD="$(cat "$OPTARG")"
         ;;
       p)
         case "$OPTARG" in
@@ -133,6 +172,9 @@ parse_cli_args() {
           exit_with "Password file does not exist: $OPTARG" 3
         fi
         ROOT_PASSWD="$(cat "$OPTARG")"
+        ;;
+      r)
+        ROOT_PARTITION="$OPTARG"
         ;;
       t)
         TZ="$OPTARG"
@@ -182,9 +224,21 @@ parse_cli_args() {
   NETIF="$1"
   shift
 
-  if [[ "$PART_TYPE" == "existing" && -z "${PARTITION:-}" ]]; then
+  if [[ "$PART_TYPE" == "existing" && -z "${BOOT_PARTITION:-}" ]]; then
     print_help
-    exit_with "Partition (-a) required when partition type is 'existing'" 2
+    exit_with "Boot partition (-b) required when partition type is 'existing'" 2
+  fi
+  if [[ "$PART_TYPE" == "existing" && -z "${ROOT_PARTITION:-}" ]]; then
+    print_help
+    exit_with "Root partition (-r) required when partition type is 'existing'" 2
+  fi
+
+  if [[ -n "${ENCRYPT:-}" ]]; then
+    if [[ -z "${ROOT_POOL_PASSWD:-}" ]]; then
+      read_passwd "$ROOT_POOL encryption"
+      ROOT_POOL_PASSWD="$PASSWD"
+      unset PASSWD
+    fi
   fi
 
   if [[ -z "${ROOT_PASSWD:-}" ]]; then
@@ -198,166 +252,441 @@ in_chroot() {
   arch-chroot /mnt /bin/bash -c "$*"
 }
 
+load_zfs() {
+  info "Loading the ZFS kernel module"
+  modprobe zfs
+}
+
 partition_disk() {
-  case "$PART_TYPE" in
+  local part_type="$1"
+  shift
+  local disk_dev="$1"
+  shift
+
+  case "$part_type" in
     existing)
-      partition="$PARTITION"
-      info "Using existing partition $partition on disk $DISK"
+      local boot_pool_dev="$1"
+      local root_pool_dev="$2"
+
+      partition_existing_disk "$disk_dev" "$boot_pool_dev" "$root_pool_dev"
       ;;
     remaining)
-      info "Partitioning remaining space on disk $DISK"
-      local start num
-
-      # Find last free space block on the disk
-      start="$(parted "/dev/$DISK" unit MiB print free \
-        | grep 'Free Space' \
-        | tail -n 1 \
-        | awk '{print $1}')"
-      # Create a partition filling the remaining part of the disk
-      parted --script "/dev/$DISK" \
-        mkpart primary "$start" 100%
-      # Determine the partition number for the newly created partition
-      num="$(parted "/dev/$DISK" unit MiB print \
-        | awk "\$2 == \"$start\" {print \$1}")"
-
-      partition="${DISK}p${num}"
+      partition_remaining_disk "$disk_dev"
       ;;
     whole)
-      info "Partitioning whole disk $DISK"
-      parted --script "/dev/$DISK" \
-        mklabel gpt \
-        mkpart ESP fat32 1MiB 551MiB \
-        mkpart primary 551MiB 100% \
-        set 1 boot on
-
-      partition="${DISK}p2"
+      partition_whole_disk "$disk_dev"
       ;;
     *)
       print_help
-      exit_with "Invalid partition type: $PART_TYPE" 2
+      exit_with "Invalid partition type: $part_type" 2
       ;;
   esac
 }
 
-find_partid() {
+# Partitions an existing disk and sets variables for partition devices.
+#
+# # Side Effects
+#
+# This function sets the following global variables:
+#
+# * `ESP_DEV`: ESP partition device
+# * `BOOT_POOL_DEV`: boot pool partition device
+# * `ROOT_POOL_DEV`: root pool partition device
+partition_existing_disk() {
+  local disk_dev="$1"
+  local boot_pool_dev_name="$2"
+  local root_pool_dev_name="$3"
+
+  find_esp_dev "$disk_dev"
+  ESP_DEV="$FIND_ESP_DEV"
+  unset FIND_ESP_DEV
+
+  find_dev "$boot_pool_dev_name"
+  BOOT_POOL_DEV="$FIND_DEV"
+  unset FIND_DEV
+  info "Using existing boot pool partition '$BOOT_POOL_DEV'"
+
+  find_dev "$root_pool_dev_name"
+  ROOT_POOL_DEV="$FIND_DEV"
+  unset FIND_DEV
+  info "Using existing root pool partition '$ROOT_POOL_DEV'"
+}
+
+# Partitions remaining space on an existing disk and sets variables for
+# partition devices.
+#
+# # Side Effects
+#
+# This function sets the following global variables:
+#
+# * `ESP_DEV`: ESP partition device
+# * `BOOT_POOL_DEV`: boot pool partition device
+# * `ROOT_POOL_DEV`: root pool partition device
+partition_remaining_disk() {
+  local disk_dev="$1"
+
+  info "Partitioning remaining space on disk '$disk_dev'"
+
+  find_esp_dev "$disk_dev"
+  ESP_DEV="$FIND_ESP_DEV"
+  unset FIND_ESP_DEV
+
+  local part boot_pool_part root_pool_part
+  part="$(sgdisk --print "$disk_dev" | tail -n 1 | awk '{ print $1 }')"
+  boot_pool_part=$((part + 1))
+  root_pool_part=$((part + 1))
+
+  partition_boot_pool "$disk_dev" "$boot_pool_part"
+  partition_root_pool "$disk_dev" "$root_pool_part"
+}
+
+# Partitions entire disk and sets variables for partition devices.
+#
+# # Side Effects
+#
+# This function sets the following global variables:
+#
+# * `ESP_DEV`: ESP partition device
+# * `BOOT_POOL_DEV`: boot pool partition device
+# * `ROOT_POOL_DEV`: root pool partition device
+partition_whole_disk() {
+  local disk_dev="$1"
+  local esp_part=1
+  local boot_pool_part=2
+  local root_pool_part=3
+
+  info "Partitioning whole disk '$disk_dev'"
+
+  info "Clearing partition table on '$disk_dev'"
+  sgdisk --zap-all "$disk_dev"
+
+  partition_esp "$disk_dev" "$esp_part"
+  partition_boot_pool "$disk_dev" "$boot_pool_part"
+  partition_root_pool "$disk_dev" "$root_pool_part"
+}
+
+# Creates a partition for the ESP on a given disk and sets a global
+# variable.
+#
+# # Side Effects
+#
+# This function sets the following global variables:
+#
+# * `ESP_DEV`: boot pool partition device
+partition_esp() {
+  local disk_dev="$1"
+  local part="$2"
+
+  ESP_DEV="${disk_dev}-part${part}"
+  info "Creating ESP partition for UEFI booting '$ESP_DEV'"
+  sgdisk \
+    --new="$part:1M:+512M" \
+    --typecode="$part:EF00" \
+    "$disk_dev"
+  wait_on_part_dev "$ESP_DEV"
+}
+
+# Creates a partition for the boot pool on a given disk and sets a global
+# variable.
+#
+# # Side Effects
+#
+# This function sets the following global variables:
+#
+# * `BOOT_POOL_DEV`: boot pool partition device
+partition_boot_pool() {
+  local disk_dev="$1"
+  local part="$2"
+
+  BOOT_POOL_DEV="${disk_dev}-part${part}"
+  info "Creating boot pool partition '$BOOT_POOL_DEV'"
+  sgdisk \
+    --new="$part:0:+1G" \
+    --typecode="$part:BF01" \
+    "$disk_dev"
+  wait_on_part_dev "$BOOT_POOL_DEV"
+}
+
+# Creates a partition for the root pool on a given disk and sets a global
+# variable.
+#
+# # Side Effects
+#
+# This function sets the following global variables:
+#
+# * `ROOT_POOL_DEV`: root pool partition device
+partition_root_pool() {
+  local disk_dev="$1"
+  local part="$2"
+
+  ROOT_POOL_DEV="${disk_dev}-part${part}"
+  info "Creating root pool partition '$ROOT_POOL_DEV'"
+  sgdisk \
+    --new="$part:0:0" \
+    --typecode="$part:BF01" \
+    "$disk_dev"
+  wait_on_part_dev "$ROOT_POOL_DEV"
+}
+
+# Finds the given device name under the `/dev/disk/by-id` tree and sets a
+# global variable.
+#
+# # Side Effects
+#
+# This function sets the following global variable:
+#
+# * `FIND_DEV`: found device
+find_dev() {
+  local device_name="$1"
   local retries=0
 
+  udevadm trigger
+  udevadm settle
+
   while [[ $retries -lt 5 ]]; do
-    for diskid in /dev/disk/by-id/*; do
-      if [[ "$(readlink -f "$diskid")" == "/dev/$partition" ]]; then
-        partid="$diskid"
-        info "Found partition ID for /dev/$partition: $partid"
+    while read -r device_id; do
+      if [[ "$(readlink -f "$device_id")" == "/dev/$device_name" ]]; then
+        FIND_DEV="$device_id"
+        info "Found partition ID for /dev/$device_name: $FIND_DEV"
         return
       fi
-    done
+    done < <(find /dev/disk/by-id -not -type d | sort --ignore-case)
 
     retries=$((retries + 1))
     info "Partition ID not found, sleeping and retrying ($retries/5)"
     sleep 3
   done
 
-  exit_with "Could not find partition ID for /dev/$partition" 10
+  exit_with "Could not find partition ID for /dev/$device_name" 10
 }
 
+# Finds the EFI System Partition (EFI) on a given disk device.
+#
+# # Side Effects
+#
+# This function sets the following global variable:
+#
+# * `FIND_ESP_DEV`: found ESP partition device
 find_esp_dev() {
-  esp_dev="$(fdisk -l "/dev/$DISK" \
-    | grep 'EFI System$' \
-    | head -n 1 \
-    | cut -d ' ' -f 1)"
+  local disk_dev="$1"
+  local esp_part
+
+  esp_part="$(sgdisk --print "$disk_dev" | awk '$6 == "EF00" { print $1 }')"
   if [[ -z "$esp_dev" ]]; then
-    exit_with "Could not find an EFI System Partition (ESP) on /dev/$DISK" 5
+    exit_with "Cannot find EFI System Partition (ESP) on '$disk_dev'" 5
+  fi
+
+  FIND_ESP_DEV="${disk_dev}-part${esp_part}"
+  info "Found EFI System Partition (ESP) '$FIND_ESP_DEV'"
+  wait_on_part_dev "$FIND_ESP_DEV"
+}
+
+wait_on_part_dev() {
+  local part_dev="$1"
+  local retries=0
+
+  udevadm settle
+
+  while [[ $retries -lt 5 ]]; do
+    if [[ -e "$part_dev" ]]; then
+      return
+    fi
+
+    retries=$((retries + 1))
+    sleep 3
+  done
+
+  exit_with "Could not find partition device '$part_dev'" 10
+}
+
+format_esp() {
+  local part_type="$1"
+  local esp_dev="$2"
+
+  if [[ "$part_type" == "whole" ]]; then
+    info "Formatting EFI System Partition (ESP) filesystem on '$esp_dev'"
+    mkfs.fat -F32 "$esp_dev"
+  fi
+}
+
+create_boot_zpool() {
+  local boot_pool="$1"
+  local boot_pool_dev="$2"
+
+  info "Creating the boot zpool '$boot_pool' on '$boot_pool_dev'"
+  # GRUB does not support all of the zpool features. See spa_feature_names in
+  # grub-core/fs/zfs/zfs.c. This step creates a separate boot pool for /boot
+  # with the features limited to only those that GRUB supports, allowing the
+  # root pool to use any/all features. Note that GRUB opens the pool read-only,
+  # so all read-only compatible features are "supported" by GRUB.
+  #
+  # References:
+  # * http://git.savannah.gnu.org/cgit/grub.git/tree/grub-core/fs/zfs/zfs.c#n276
+  # * https://github.com/zfsonlinux/zfs/wiki/Debian-Buster-Root-on-ZFS
+  # * https://wiki.archlinux.org/index.php/ZFS#GRUB-compatible_pool_creation
+  zpool create \
+    -m none \
+    -R /mnt \
+    -o ashift=12 \
+    -d \
+    -o feature@allocation_classes=enabled \
+    -o feature@async_destroy=enabled \
+    -o feature@bookmarks=enabled \
+    -o feature@embedded_data=enabled \
+    -o feature@empty_bpobj=enabled \
+    -o feature@enabled_txg=enabled \
+    -o feature@extensible_dataset=enabled \
+    -o feature@filesystem_limits=enabled \
+    -o feature@hole_birth=enabled \
+    -o feature@large_blocks=enabled \
+    -o feature@lz4_compress=enabled \
+    -o feature@project_quota=enabled \
+    -o feature@resilver_defer=enabled \
+    -o feature@spacemap_histogram=enabled \
+    -o feature@spacemap_v2=enabled \
+    -o feature@userobj_accounting=enabled \
+    -o feature@zpool_checkpoint=enabled \
+    -O acltype=posixacl \
+    -O canmount=off \
+    -O compression=lz4 \
+    -O devices=off \
+    -O mountpoint=none \
+    -O normalization=formD \
+    -O relatime=on \
+    -O xattr=sa \
+    "$boot_pool" \
+    "$boot_pool_dev"
+}
+
+create_root_zpool() {
+  local root_pool="$1"
+  local root_pool_dev="$2"
+  local encrypted="$3"
+
+  if [[ -n "$encrypted" ]]; then
+    local root_pool_passwd="$4"
+
+    info "Creating the encrypted root zpool '$root_pool' on '$root_pool_dev'"
+    zpool create \
+      -m none \
+      -R /mnt \
+      -o ashift=12 \
+      -O acltype=posixacl \
+      -O canmount=off \
+      -O compression=lz4 \
+      -O dnodesize=auto \
+      -O encryption=aes-256-gcm \
+      -O keyformat=passphrase \
+      -O keylocation=prompt \
+      -O mountpoint=/ \
+      -O normalization=formD \
+      -O relatime=on \
+      -O xattr=sa \
+      "$root_pool" \
+      "$root_pool_dev" \
+      <<<"$root_pool_passwd"
   else
-    info "Found EFI System Partition (ESP) $esp_dev on /dev/$DISK"
+    info "Creating the root zpool '$root_pool' on '$root_pool_dev'"
+    zpool create \
+      -m none \
+      -R /mnt \
+      -o ashift=12 \
+      -O acltype=posixacl \
+      -O canmount=off \
+      -O compression=lz4 \
+      -O dnodesize=auto \
+      -O mountpoint=/ \
+      -O normalization=formD \
+      -O relatime=on \
+      -O xattr=sa \
+      "$root_pool" \
+      "$root_pool_dev"
   fi
 }
 
-create_esp() {
-  case "$PART_TYPE" in
-    whole)
-      info "Creating EFI System Partition (ESP) filesystem on $esp_dev"
-      mkfs.fat -F32 "$esp_dev"
-      ;;
-    *)
-      # Partition already exists
-      ;;
-  esac
+create_root_datasets() {
+  local pool="$1"
+
+  zfs create -o canmount=off -o mountpoint=none "$pool/ROOT"
+  zfs create -o canmount=noauto -o mountpoint=/ "$pool/ROOT/default"
+  zfs mount "$pool/ROOT/default"
+
+  zfs create "$pool/home"
+  zfs create -o mountpoint=/root "$pool/home/root"
+
+  zfs create "$pool/opt"
+
+  zfs create -o canmount=off "$pool/usr"
+  zfs create "$pool/usr/local"
+
+  zfs create -o canmount=off "$pool/var"
+  zfs create -o com.sun:auto-snapshot=false "$pool/var/cache"
+  zfs create "$pool/var/cache/pacman"
+  zfs create -o canmount=off "$pool/var/lib"
+  zfs create -o com.sun:auto-snapshot=false "$pool/var/lib/docker"
+  zfs create -o canmount=off "$pool/var/lib/systemd"
+  zfs create "$pool/var/lib/systemd/coredump"
+  zfs create "$pool/var/log"
+  zfs create "$pool/var/log/journal"
+  zfs create "$pool/var/spool"
+  zfs create -o com.sun:auto-snapshot=false "$pool/var/tmp"
+
+  chmod 1777 /mnt/var/tmp
 }
 
-encrypt_partition() {
-  if [[ -n "${ENCRYPT:-}" ]]; then
-    info "Encrypting $partid partition"
-    cryptsetup luksFormat \
-      --cipher aes-xts-plain64 \
-      --hash sha512 \
-      "$partid"
-    cryptsetup open --type luks "$partid" cryptroot
-  fi
+create_boot_datasets() {
+  local pool="$1"
+
+  zfs create -o canmount=off -o mountpoint=none "$pool/BOOT"
+  zfs create -o canmount=noauto -o mountpoint=/boot "$pool/BOOT/default"
+  zfs mount "$pool/BOOT/default"
 }
 
-set_zpool_dev() {
-  if [[ -n "${ENCRYPT:-}" ]]; then
-    zpool_dev="/dev/mapper/cryptroot"
-  else
-    # If no encryption is used, then set the zpool device to the partid
-    zpool_dev="$partid"
-  fi
+prepare_pools() {
+  local boot_pool="$1"
+  local root_pool="$2"
 
-  info "Using the $zpool_dev for the zpool device"
-}
-
-create_zpool() {
-  info "Loading the ZFS kernel module"
-  modprobe zfs
-
-  info "Creating the root zpool '$POOL' on $zpool_dev"
-  zpool create -m none -f "$POOL" "$zpool_dev"
-
-  info "Setting default ZFS tunings for $POOL"
-  # See: https://wiki.archlinux.org/index.php/ZFS#General_2
-  zfs set compression=on "$POOL"
-  zfs set atime=on "$POOL"
-  zfs set relatime=on "$POOL"
-}
-
-create_datasets() {
-  info "Creating ZFS datasets to support ZFS boot environments"
-  # See: https://wiki.archlinux.org/index.php/Installing_Arch_Linux_on_ZFS#Create_your_datasets
-  zfs create -o mountpoint=none "$POOL/ROOT"
-  zfs create -o mountpoint=/ -o compression=lz4 "$POOL/ROOT/default" || true
-
-  info "Creating ZFS dataset for /home"
-  zfs create -o mountpoint=/home -o compression=lz4 "$POOL/home"
-
-  info "Creating ZFS dataset for /root"
-  zfs create -o mountpoint=/root -o compression=lz4 "$POOL/home/root"
-}
-
-prepare_pool() {
   info "Unmounting all ZFS datasets"
-  zfs umount -a
-
-  info "Setting mountpoints for ZFS datasets"
-  zfs set mountpoint=/ "$POOL/ROOT/default"
-  zfs set mountpoint=/home "$POOL/home"
-  zfs set mountpoint=/root "$POOL/home/root"
+  zfs unmount -a
+  zfs unmount "$boot_pool/BOOT/default"
+  zfs unmount "$root_pool/ROOT/default"
 
   info "Writing out initial /etc/fstab"
   cat <<-EOF >/etc/fstab
-	$POOL/ROOT/default	/	zfs	defaults,noatime	0 0
+	$root_pool/ROOT/default	/	zfs	defaults,noatime	0 0
 	EOF
 
-  info "Setting bootfs property on $POOL/ROOT/default"
-  # Set the bootfs property on the descendant root filesystem so the boot
+  info "Setting bootfs property on $boot_pool/ROOT/default"
+  # Set the bootfs property on the descendant boot filesystem so the boot
   # loader knows where to find the operating system.
-  zpool set bootfs="$POOL/ROOT/default" "$POOL"
+  zpool set bootfs="$boot_pool/BOOT/default" "$boot_pool"
 
-  info "Exporting the pool $POOL"
-  zpool export "$POOL"
+  info "Exporting the pools"
+  zpool export "$boot_pool"
+  zpool export "$root_pool"
 }
 
-mount_pool_for_install() {
-  info "Re-importing the pool $POOL"
-  zpool import -d /dev/disk/by-id -R /mnt "$POOL"
+mount_pools_for_install() {
+  local esp_dev="$1"
+  local boot_pool="$2"
+  local root_pool="$3"
+  local encrypted="$4"
+
+  info "Re-importing the pools"
+  zpool import -N -d /dev/disk/by-id -R /mnt "$root_pool"
+  zpool import -N -d /dev/disk/by-id -R /mnt "$boot_pool"
+
+  if [[ -n "$encrypted" ]]; then
+    local root_pool_passwd="$5"
+
+    info "Decrypting root pool '$root_pool'"
+    zfs load-key "$root_pool" <<<"$root_pool_passwd"
+  fi
+
+  info "Re-mounting datasets"
+  zfs mount "$root_pool/ROOT/default"
+  zfs mount "$boot_pool/BOOT/default"
+  zfs mount -a
 
   info "Mounting the EFI System Partition (ESP) device $esp_dev"
   mkdir -pv /mnt/boot/efi
@@ -365,9 +694,11 @@ mount_pool_for_install() {
 }
 
 gen_fstab() {
+  local root_pool="$1"
+
   info "Using genfstab to generate system /etc/fstab"
   mkdir -pv /mnt/etc
-  genfstab -U -p /mnt | grep -E ROOT/default >/mnt/etc/fstab
+  genfstab -U -p /mnt | grep -E "^$root_pool/ROOT/default" >/mnt/etc/fstab
 }
 
 add_bootstrap_repo_keys() {
@@ -462,15 +793,47 @@ add_archzfs_repo() {
 }
 
 setup_zpool_cache() {
-  info "Clearing zpool cachefile property for $POOL"
-  in_chroot "zpool set cachefile=none $POOL"
+  local root_pool="$1"
 
-  info "Copying zpool.cache"
+  info "Clearing zpool cachefile property for root pool '$root_pool'"
+  in_chroot "zpool set cachefile=none '$root_pool'"
+
   mkdir -pv /mnt/etc/zfs
-  cp -v /etc/zfs/zpool.cache /mnt/etc/zfs/
+  if [[ -e /etc/zfs/zpool.cache ]]; then
+    info "Copying zpool.cache"
+    cp -v /etc/zfs/zpool.cache /mnt/etc/zfs/
+  fi
 
-  info "Setting zpool cachefile property for $POOL"
-  in_chroot "zpool set cachefile=/etc/zfs/zpool.cache $POOL"
+  info "Setting zpool cachefile property for root pool '$root_pool'"
+  in_chroot "zpool set cachefile=/etc/zfs/zpool.cache '$root_pool'"
+}
+
+setup_boot_pool_mounting() {
+  local boot_pool="$1"
+
+  info "Creating zfs-import-$boot_pool service unit to import boot pool"
+  cat <<-EOF >"/mnt/etc/systemd/system/zfs-import-${boot_pool}.service"
+	[Unit]
+	Description=Import boot pool $boot_pool
+	DefaultDependencies=no
+	Requires=zfs-mount.service
+
+	[Service]
+	Type=oneshot
+	ExecStart=/sbin/zpool import -N -o cachefile=none $boot_pool
+
+	[Install]
+	WantedBy=zfs-import.target
+	EOF
+
+  info "Adding fstab entry for /boot filesystem"
+  cat <<-EOF >>/mnt/etc/fstab
+	$boot_pool/BOOT/default	/boot	zfs	nodev,relatime,xattr,posixacl,x-systemd.requires=zfs-mount.service	0 0
+	EOF
+}
+
+nope() {
+  return
 }
 
 set_root_passwd() {
@@ -479,15 +842,17 @@ set_root_passwd() {
 }
 
 enable_services() {
-  local service
+  local boot_pool="$1"
   local services=(
     zfs.target
     zfs-import-cache
     zfs-mount
     zfs-import.target
+    "zfs-import-$boot_pool"
     "dhcpcd@${NETIF}.service"
     sshd.service
   )
+  local service
 
   for service in "${services[@]}"; do
     info "Enabling '$service' service"
@@ -496,23 +861,24 @@ enable_services() {
 }
 
 install_grub() {
-  if [[ -n "${ENCRYPT:-}" ]]; then
-    local grub_val
-    grub_val="cryptdevice=${partid}:cryptroot"
+  local root_pool="$1"
 
-    info "Adding disk encryption support for GRUB"
-    sed -i \
-      -e 's,^#\(GRUB_ENABLE_CRYPTODISK=y\)$,\1,' \
-      -e "s,^\\(GRUB_CMDLINE_LINUX\\)=\"\\(.*\\)\"$,\\1=\"\\2 $grub_val\"," \
-      /mnt/etc/default/grub
-  fi
+  local root="root=ZFS=$root_pool/ROOT/default"
+  sed -i \
+    -e "s,^\\(GRUB_CMDLINE_LINUX\\)=\"\\(.*\\)\"$,\\1=\"\\2 $root\"," \
+    /mnt/etc/default/grub
 
-  if is_in_dell_xps_13; then
-    info "Adding deep sleep support for Dell XPS"
-    sed -i \
-      -e 's,^\(GRUB_CMDLINE_LINUX_DEFAULT\)="\(.*\)"$,\1="\2 mem_sleep_default=deep",' \
-      /mnt/etc/default/grub
-  fi
+  # TODO: This bug may be addressed in Linux 5.3.x, see:
+  #
+  # * https://wiki.archlinux.org/index.php/Dell_XPS_13_(9370)
+  # * https://bugzilla.kernel.org/show_bug.cgi?id=199689
+  #
+  # if is_in_dell_xps_13; then
+  #   info "Adding deep sleep support for Dell XPS"
+  #   sed -i \
+  #     -e 's,^\(GRUB_CMDLINE_LINUX_DEFAULT\)="\(.*\)"$,\1="\2 mem_sleep_default=deep",' \
+  #     /mnt/etc/default/grub
+  # fi
 
   info "Installing GRUB"
   in_chroot \
@@ -522,8 +888,10 @@ install_grub() {
   in_chroot \
     "ZPOOL_VDEV_NAME_PATH=1 grub-mkconfig -o /boot/grub/grub.cfg"
 
-  info "Creating vconsole.conf for larger console font"
-  echo "FONT=ter-132n" >/mnt/etc/vconsole.conf
+  if is_in_dell_xps_13; then
+    info "Creating vconsole.conf for larger console font"
+    echo "FONT=ter-132n" >/mnt/etc/vconsole.conf
+  fi
 
   info "Modifying HOOKS in mkinitcpio.conf"
   sed -i 's|^HOOKS=.*|HOOKS="base udev autodetect modconf block consolefont keyboard encrypt zfs filesystems shutdown"|g' /mnt/etc/mkinitcpio.conf
@@ -538,12 +906,17 @@ install_hardware_specific_pkgs() {
     in_chroot "pacman -S --noconfirm open-vm-tools"
   fi
 
-  if is_in_dell_xps_13; then
-    # Thanks to: http://www.saminiir.com/configuring-arch-linux-on-dell-xps-15/
-    info "Enabling 'laptop-mode' in Kernel for Dell XPS 13"
-    mkdir -p /mnt/etc/sysctl.d
-    echo "vm.laptop_mode = 5" >/mnt/etc/sysctl.d/laptop.conf
-  fi
+  # TODO: Not sure I trust the age of this article and it also references
+  # spinning drives:
+  #
+  # * https://www.kernel.org/doc/Documentation/laptops/laptop-mode.txt
+  #
+  # if is_in_dell_xps_13; then
+  #   # Thanks to: http://www.saminiir.com/configuring-arch-linux-on-dell-xps-15/
+  #   info "Enabling 'laptop-mode' in Kernel for Dell XPS 13"
+  #   mkdir -p /mnt/etc/sysctl.d
+  #   echo "vm.laptop_mode = 5" >/mnt/etc/sysctl.d/laptop.conf
+  # fi
 }
 
 set_timezone() {
@@ -661,18 +1034,24 @@ setup_x() {
   # TODO fn: is the deafult xinitrc reasonable or shoud we append `exec i3`?
 }
 
-finalize_pool() {
+finalize_pools() {
+  local boot_pool="$1"
+  local root_pool="$2"
+
   info "Unmounting /mnt/boot/efi"
   umount /mnt/boot/efi
-  info "Unmounting ZFS datasets"
-  zfs umount -a
-  info "Exporting ZFS zpool $POOL"
-  zpool export "$POOL"
 
-  if [[ -n "${ENCRYPT:-}" ]]; then
-    info "Closing cryptoroot"
-    cryptsetup close cryptroot
-  fi
+  info "Unmounting ZFS datasets"
+  zfs unmount -a
+  zfs unmount "$boot_pool/BOOT/default"
+  zfs unmount "$root_pool/ROOT/default"
+
+  info "Setting mounting to legacy for $boot_pool/BOOT/default"
+  zfs set mountpoint=legacy "$boot_pool/BOOT/default"
+
+  info "Exporting ZFS zpools"
+  zpool export "$boot_pool"
+  zpool export "$root_pool"
 }
 
 finish() {
