@@ -894,7 +894,7 @@ install_grub() {
   fi
 
   info "Modifying HOOKS in mkinitcpio.conf"
-  sed -i 's|^HOOKS=.*|HOOKS="base udev autodetect modconf block consolefont keyboard encrypt zfs filesystems shutdown"|g' /mnt/etc/mkinitcpio.conf
+  sed -i 's|^HOOKS=.*|HOOKS="base udev keyboard autodetect modconf block consolefont zfs filesystems shutdown"|g' /mnt/etc/mkinitcpio.conf
 
   info "Update initial ramdisk (initrd) with ZFS support"
   in_chroot "mkinitcpio -p linux"
