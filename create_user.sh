@@ -78,10 +78,17 @@ create_user() {
   local user="$1"
   local comment="$2"
   local passwd="$3"
+  local dataset="$pool/home/$user"
 
-  info "Creating $user user"
-  zfs create "$pool/home/$user"
+  info "Creating ZFS dataset for '$user'"
+  zfs create "$dataset"
+
+  info "Delegating ZFS datasets under $dataset to '$user'"
+  zfs allow "$user" create,mount,mountpoint,snapshot "$dataset"
+
   sleep 2
+
+  info "Creating user '$user'"
   useradd \
     --create-home \
     --user-group \
@@ -90,6 +97,8 @@ create_user() {
     --base-dir /tmp \
     --comment "$comment" \
     "$user"
+
+  info "Migrating user home to $dataset ZFS dataset"
   chown -R "${user}:${user}" "/home/$user"
   chmod 0750 "/home/$user"
   (
@@ -99,7 +108,7 @@ create_user() {
   usermod -d "/home/$user" "$user"
   rm -rf "/tmp/$user"
 
-  info "Set $user password"
+  info "Setting password for '$user'"
   chpasswd <<<"$user:$passwd"
 }
 
