@@ -83,9 +83,6 @@ create_user() {
   info "Creating ZFS dataset for '$user'"
   zfs create "$dataset"
 
-  info "Delegating ZFS datasets under $dataset to '$user'"
-  zfs allow "$user" create,mount,mountpoint,snapshot "$dataset"
-
   sleep 2
 
   info "Creating user '$user'"
@@ -107,6 +104,9 @@ create_user() {
   )
   usermod -d "/home/$user" "$user"
   rm -rf "/tmp/$user"
+
+  info "Delegating ZFS datasets under $dataset to '$user'"
+  zfs allow "$user" create,mount,mountpoint,snapshot "$dataset"
 
   info "Setting password for '$user'"
   chpasswd <<<"$user:$passwd"
