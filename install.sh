@@ -856,18 +856,6 @@ install_grub() {
     -e "s,^\\(GRUB_CMDLINE_LINUX\\)=\"\\(.*\\)\"$,\\1=\"\\2 $root\"," \
     /mnt/etc/default/grub
 
-  # TODO: This bug may be addressed in Linux 5.3.x, see:
-  #
-  # * https://wiki.archlinux.org/index.php/Dell_XPS_13_(9370)
-  # * https://bugzilla.kernel.org/show_bug.cgi?id=199689
-  #
-  # if is_in_dell_xps_13; then
-  #   info "Adding deep sleep support for Dell XPS"
-  #   sed -i \
-  #     -e 's,^\(GRUB_CMDLINE_LINUX_DEFAULT\)="\(.*\)"$,\1="\2 mem_sleep_default=deep",' \
-  #     /mnt/etc/default/grub
-  # fi
-
   info "Installing GRUB"
   in_chroot \
     "ZPOOL_VDEV_NAME_PATH=1 grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB"
