@@ -60,6 +60,7 @@ main() {
   add_bootstrap_repo_keys
   add_bootstrap_override_repo
   install_base
+  install_hardware_specific_pkgs
   setup_zpool_cache "$root_pool"
   setup_boot_pool_mounting "$boot_pool"
   set_root_passwd
@@ -67,7 +68,6 @@ main() {
   install_grub "$root_pool"
 
   # Initially configure base system
-  install_hardware_specific_pkgs
   set_timezone
   setup_clock
   generate_locales
@@ -792,6 +792,25 @@ add_archzfs_repo() {
   in_chroot "pacman-key -r F75D9D76 && pacman-key --lsign-key F75D9D76"
 }
 
+install_hardware_specific_pkgs() {
+  if is_in_vmware; then
+    info "Installing VMware-specific software"
+    in_chroot "pacman -S --noconfirm open-vm-tools"
+  fi
+
+  # TODO: Not sure I trust the age of this article and it also references
+  # spinning drives:
+  #
+  # * https://www.kernel.org/doc/Documentation/laptops/laptop-mode.txt
+  #
+  # if is_in_dell_xps_13; then
+  #   # Thanks to: http://www.saminiir.com/configuring-arch-linux-on-dell-xps-15/
+  #   info "Enabling 'laptop-mode' in Kernel for Dell XPS 13"
+  #   mkdir -p /mnt/etc/sysctl.d
+  #   echo "vm.laptop_mode = 5" >/mnt/etc/sysctl.d/laptop.conf
+  # fi
+}
+
 setup_zpool_cache() {
   local root_pool="$1"
 
@@ -854,6 +873,10 @@ enable_services() {
   )
   local service
 
+  if is_in_vmware; then
+    services+=(vmtoolsd.service)
+  fi
+
   for service in "${services[@]}"; do
     info "Enabling '$service' service"
     in_chroot "systemctl enable $service"
@@ -900,25 +923,6 @@ install_grub() {
   in_chroot "mkinitcpio -p linux"
 }
 
-install_hardware_specific_pkgs() {
-  if is_in_vmware; then
-    info "Installing VMware-specific software"
-    in_chroot "pacman -S --noconfirm open-vm-tools"
-  fi
-
-  # TODO: Not sure I trust the age of this article and it also references
-  # spinning drives:
-  #
-  # * https://www.kernel.org/doc/Documentation/laptops/laptop-mode.txt
-  #
-  # if is_in_dell_xps_13; then
-  #   # Thanks to: http://www.saminiir.com/configuring-arch-linux-on-dell-xps-15/
-  #   info "Enabling 'laptop-mode' in Kernel for Dell XPS 13"
-  #   mkdir -p /mnt/etc/sysctl.d
-  #   echo "vm.laptop_mode = 5" >/mnt/etc/sysctl.d/laptop.conf
-  # fi
-}
-
 set_timezone() {
   # * https://wiki.archlinux.org/index.php/Time
   # * https://wiki.archlinux.org/index.php/Systemd-timesyncd
@@ -931,9 +935,6 @@ setup_clock() {
   #
   # * http://www.linuxfromscratch.org/lfs/view/stable-systemd/chapter07/clock.html
   if is_in_vmware; then
-    info "Enabling vmtoolsd service"
-    in_chroot "systemctl enable vmtoolsd.service"
-
     # TODO fn: this doesn't appear to get set--is it needed?
     info "Setting time adjustment due to local time in hardware clock"
     in_chroot "timedatectl set-local-rtc 1"
