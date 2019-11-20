@@ -76,11 +76,6 @@ main() {
   # Prepare user creation script for `root`
   copy_create_user_script
 
-  if [[ -n "${INSTALL_X:-}" ]]; then
-    install_x_hardware_specific_pkgs
-    setup_x
-  fi
-
   # Finalize pools and end installer
   finalize_pools "$boot_pool" "$root_pool"
   finish
@@ -100,10 +95,6 @@ FLAGS:
     -e  Encrypt the partition for the zpool (default: no)
     -h  Prints this message
     -V  Prints version information
-    -x  Installs GUI/X (default: no)
-    -X  Skips installation and setup of GUI/X (default: yes)
-    -w  Installs GUI/Wayland (default: no)
-    -W  Skips installation and setup of GUI/Wayland (default: yes)
 
 OPTIONS:
     -b <PARTITION>            Choose a boot partition for type partition
@@ -139,7 +130,7 @@ parse_cli_args() {
 
   OPTIND=1
   # Parse command line flags and options
-  while getopts ":b:eE:p:P:r:t:xXVwWh" opt; do
+  while getopts ":b:eE:p:P:r:t:Vh" opt; do
     case $opt in
       b)
         BOOT_PARTITION="$OPTARG"
@@ -179,23 +170,9 @@ parse_cli_args() {
       t)
         TZ="$OPTARG"
         ;;
-      x)
-        INSTALL_X=true
-        ;;
-      X)
-        unset INSTALL_X
-        ;;
       V)
         echo "$PROGRAM $version"
         exit 0
-        ;;
-      w)
-        # TODO: remove this
-        # shellcheck disable=SC2034
-        INSTALL_WAYLAND=true
-        ;;
-      W)
-        unset INSTALL_WAYLAND
         ;;
       h)
         print_help
@@ -994,45 +971,6 @@ find_fastest_mirrors() {
 copy_create_user_script() {
   info "Copying create_user script"
   cp -p -v "${0%/*}/create_user.sh" /mnt/root/
-}
-
-install_x_hardware_specific_pkgs() {
-  if is_in_vmware; then
-    local vmware_pkgs=(
-      gtkmm3
-      libxtst
-      mesa-libgl
-      xf86-input-vmmouse
-      xf86-video-vmware
-    )
-
-    info "Installing VMware-specific software"
-    in_chroot "pacman -S --noconfirm ${vmware_pkgs[*]}"
-
-    info "Enabling vmware-vmblock-fuse service"
-    in_chroot "systemctl enable vmware-vmblock-fuse.service"
-  fi
-}
-
-setup_x() {
-  local x_pkgs=(
-    i3
-    xf86-input-evdev
-    xorg-server
-    xorg-xinit
-  )
-
-  info "Installing X, a window manager, and utilities"
-  in_chroot "pacman -S --noconfirm ${x_pkgs[*]}"
-
-  if is_in_vmware; then
-    local f=/mnt/etc/X11/xinit/xinitrc.d/10-vmware.sh
-    info "Adding vmware-user-suid-wrapper to xinitirc.d"
-    echo "/usr/sbin/vmware-user-suid-wrapper" >"$f"
-    chmod -v 755 "$f"
-  fi
-
-  # TODO fn: is the deafult xinitrc reasonable or shoud we append `exec i3`?
 }
 
 finalize_pools() {
