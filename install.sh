@@ -15,22 +15,22 @@ print_usage() {
         $program [FLAGS] [OPTIONS] <DISK> <NETIF>
 
     FLAGS:
-        -e  Encrypt the partition for the zpool (default: no)
-        -h  Prints this message
-        -V  Prints version information
+        -e, --encrypt   Encrypts the partition for the zpool (default: no)
+        -h, --help      Prints help information
+        -V, --version   Prints version information
 
     OPTIONS:
-        -b <PARTITION>              Choose a boot partition for type partition
+        -b, --boot-part=<PART>      Choose a boot partition for type partition
                                     (ex: nvme0n1p3)
-        -E <ROOT_POOL_PASSWD_FILE>  Read the root pool password from file
+        -E, --encrypt-pass=<FILE>   Read the root pool password from file
                                     (default: prompt)
-        -p <PARTITION_TYPE>         Choose a partitioning type (default: whole)
+        -p, --partition=<TYPE>      Choose a partitioning type (default: whole)
                                     (values: existing, remaining, whole)
-        -P <ROOT_PASSWD_FILE>       Read initial root password from file
+        -P, --root-pass=<FILE>      Read initial root password from file
                                     (default: prompt)
-        -r <PARTITION>              Choose a root partition for type partition
+        -r, --root-part=<PART>      Choose a root partition for type partition
                                     (ex: nvme0n1p4)
-        -t <TZ>                     Timezone (ex: \`America/Edmonton')
+        -t, --timezone=<TZ>         Timezone (ex: \`America/Edmonton')
                                     (default: \`UTC')
 
     ARGS:
@@ -159,7 +159,7 @@ parse_cli_args() {
 
   OPTIND=1
   # Parse command line flags and options
-  while getopts ":b:eE:p:P:r:t:Vh" opt; do
+  while getopts ":b:eE:p:P:r:t:Vh-:" opt; do
     case $opt in
       b)
         BOOT_PARTITION="$OPTARG"
@@ -168,11 +168,15 @@ parse_cli_args() {
         ENCRYPT=true
         ;;
       E)
-        if [ ! -f "$OPTARG" ]; then
+        if [[ ! -f "$OPTARG" ]]; then
           print_usage "$program" "$version" "$author" >&2
-          exit_with "Pool encrypt password file does not exist: $OPTARG" 3
+          exit_with "pool encrypt password file does not exist: $OPTARG" 3
         fi
         ROOT_POOL_PASSWD="$(cat "$OPTARG")"
+        ;;
+      h)
+        print_usage "$program" "$version" "$author"
+        exit 0
         ;;
       p)
         case "$OPTARG" in
@@ -181,15 +185,15 @@ parse_cli_args() {
             ;;
           *)
             print_usage "$program" "$version" "$author" >&2
-            exit_with "Invalid partition type: $OPTARG" 2
+            exit_with "invalid partition type: $OPTARG" 2
             ;;
         esac
         PART_TYPE="$OPTARG"
         ;;
       P)
-        if [ ! -f "$OPTARG" ]; then
+        if [[ ! -f "$OPTARG" ]]; then
           print_usage "$program" "$version" "$author" >&2
-          exit_with "Password file does not exist: $OPTARG" 3
+          exit_with "password file does not exist: $OPTARG" 3
         fi
         ROOT_PASSWD="$(cat "$OPTARG")"
         ;;
@@ -203,13 +207,92 @@ parse_cli_args() {
         echo "$program $version"
         exit 0
         ;;
-      h)
-        print_usage "$program" "$version" "$author"
-        exit 0
+      -)
+        long_optarg="${OPTARG#*=}"
+        case "$OPTARG" in
+          boot-part=?*)
+            BOOT_PARTITION="$long_optarg"
+            ;;
+          boot-part*)
+            print_usage "$program" "$version" "$author" >&2
+            exit_with "missing required argument for --$OPTARG option" 1
+            ;;
+          encrypt)
+            ENCRYPT=true
+            ;;
+          encrypt-pass=?*)
+            if [[ ! -f "$OPTARG" ]]; then
+              print_usage "$program" "$version" "$author" >&2
+              exit_with "pool encrypt password file does not exist: $OPTARG" 3
+            fi
+            ROOT_POOL_PASSWD="$(cat "$long_optarg")"
+            ;;
+          encrypt-pass*)
+            print_usage "$program" "$version" "$author" >&2
+            exit_with "missing required argument for --$OPTARG option" 1
+            ;;
+          help)
+            print_usage "$program" "$version" "$author"
+            exit 0
+            ;;
+          partition=?*)
+            case "$long_optarg" in
+              existing | remaining | whole)
+                # skip
+                ;;
+              *)
+                print_usage "$program" "$version" "$author" >&2
+                exit_with "invalid partition type: $long_optarg" 2
+                ;;
+            esac
+            PART_TYPE="$long_optarg"
+            ;;
+          partition*)
+            print_usage "$program" "$version" "$author" >&2
+            exit_with "missing required argument for --$OPTARG option" 1
+            ;;
+          root-part=?*)
+            ROOT_PARTITION="$long_optarg"
+            ;;
+          root-part*)
+            print_usage "$program" "$version" "$author" >&2
+            exit_with "missing required argument for --$OPTARG option" 1
+            ;;
+          root-pass=?*)
+            if [[ ! -f "$OPTARG" ]]; then
+              print_usage "$program" "$version" "$author" >&2
+              exit_with "password file does not exist: $OPTARG" 3
+            fi
+            ROOT_PASSWD="$(cat "$long_optarg")"
+            ;;
+          root-pass*)
+            print_usage "$program" "$version" "$author" >&2
+            exit_with "missing required argument for --$OPTARG option" 1
+            ;;
+          timezone=?*)
+            TZ="$long_optarg"
+            ;;
+          timezone*)
+            print_usage "$program" "$version" "$author" >&2
+            exit_with "missing required argument for --$OPTARG option" 1
+            ;;
+          version)
+            echo "$program $version"
+            exit 0
+            ;;
+          '')
+            # "--" terminates argument processing
+            break
+            ;;
+          *)
+            print_usage "$program" "$version" "$author" >&2
+            exit_with "invalid argument --$OPTARG" 1
+            ;;
+        esac
         ;;
       \?)
         print_usage "$program" "$version" "$author" >&2
-        exit_with "Invalid option: -$OPTARG" 1
+        exit_with "invalid option: -$OPTARG" 1
         ;;
     esac
   done
