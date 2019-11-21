@@ -53,8 +53,10 @@ read_passwd() {
 }
 
 has_local_override_repo() {
+  local override_repo="$1"
+
   local path
-  path="$(dirname "$0")/$OVERRIDE_REPO"
+  path="$(dirname "$0")/$override_repo"
 
   if [[ -d "$path" ]]; then
     if [[ "$(find "$path" | wc -l)" != 0 ]]; then
@@ -68,20 +70,23 @@ has_local_override_repo() {
 }
 
 override_repo_block() {
+  local override_repo="$1"
+  local repo_path_prefix="$2"
+
   local content
 
   # Read complex, interpolated string into a $content variable using leading
   # full tab indentation syntax
   read -r -d '' content <<-CONTENT
-	# Local [$OVERRIDE_REPO] repo for temporary pkg pinnings (i.e. kernel, etc.)
+	# Local [$override_repo] repo for temporary pkg pinnings (i.e. kernel, etc.)
 	#
 	# For more information:
 	# * https://wiki.archlinux.org/index.php/Pacman/Tips_and_tricks#Custom_local_repository
 	# * https://wiki.archlinux.org/index.php/downgrading_packages
 	#
-	[$OVERRIDE_REPO]
+	[$override_repo]
 	SigLevel = Optional TrustAll
-	Server = file://$REPO_PATH_PREFIX/\$repo/\$arch
+	Server = file://$repo_path_prefix/\$repo/\$arch
 	CONTENT
 
   echo "$content"

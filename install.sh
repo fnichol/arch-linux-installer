@@ -1,39 +1,94 @@
 #!/usr/bin/env bash
 
+print_usage() {
+  need_cmd sed
+
+  local program="$1"
+  local version="$2"
+  local author="$3"
+
+  echo "$program $version
+
+    Arch Linux with ZFS installer.
+
+    USAGE:
+        $program [FLAGS] [OPTIONS] <DISK> <NETIF>
+
+    FLAGS:
+        -e  Encrypt the partition for the zpool (default: no)
+        -h  Prints this message
+        -V  Prints version information
+
+    OPTIONS:
+        -b <PARTITION>              Choose a boot partition for type partition
+                                    (ex: nvme0n1p3)
+        -E <ROOT_POOL_PASSWD_FILE>  Read the root pool password from file
+                                    (default: prompt)
+        -p <PARTITION_TYPE>         Choose a partitioning type (default: whole)
+                                    (values: existing, remaining, whole)
+        -P <ROOT_PASSWD_FILE>       Read initial root password from file
+                                    (default: prompt)
+        -r <PARTITION>              Choose a root partition for type partition
+                                    (ex: nvme0n1p4)
+        -t <TZ>                     Timezone (ex: \`America/Edmonton')
+                                    (default: \`UTC')
+
+    ARGS:
+        <DISK>      The disk to use for installation (ex: \`nvme0n1')
+                    This can be found by using the \`lsblk' program.
+        <NETIF>     The network interface to setup for DHCP (ex: \`ens33')
+                    This can be found by using the \`ip addr' program.
+
+    AUTHOR:
+        $author
+    " | sed 's/^ \{1,4\}//g'
+}
+
 main() {
   set -eu
   if [[ -n "${DEBUG:-}" ]]; then set -x; fi
+  if [[ -n "${TRACE:-}" ]]; then set -xv; fi
 
-  version='0.1.0'
-  author='Fletcher Nichol <fnichol@nichol.ca>'
-  PROGRAM="$(basename "$0")"
+  local program version author
+  program="$(basename "$0")"
+  version="0.1.0"
+  author="Fletcher Nichol <fnichol@nichol.ca>"
+
+  # TODO: remove when refactoring `info` is complete
+  PROGRAM="$program"
 
   # shellcheck source=_common.sh
   . "${0%/*}/_common.sh"
 
-  local arch
+  local arch override_repo repo_path_prefix repo_path base_path
+  # The current system architecture
   arch="$(uname -m)"
-
   # The name of the override repo
-  OVERRIDE_REPO=override
+  override_repo="override"
   # The parent path of all local repos
-  REPO_PATH_PREFIX=/var/local/pacman
+  repo_path_prefix=/var/local/pacman
   # The parent path of the override repo
-  REPO_PATH="$REPO_PATH_PREFIX/$OVERRIDE_REPO/$arch"
+  repo_path="$repo_path_prefix/$override_repo/$arch"
+  # The root directory where the source code lives
+  base_path="$(dirname "$0")"
 
   # Parse CLI arguments and set local variables
-  parse_cli_args "$@"
+  parse_cli_args "$program" "$version" "$author" "$@"
+  local disk_name="$DISK"
   local boot_pool="$BOOT_POOL"
   local root_pool="$ROOT_POOL"
   local part_type="$PART_TYPE"
   local exist_boot_part="${BOOT_PARTITION:-}"
   local exist_root_part="${ROOT_PARTITION:-}"
-  local encrypt="${ENCRYPT:-}"
+  local tz="$TZ"
+  local encrypt="$ENCRYPT"
   local root_pool_passwd="${ROOT_POOL_PASSWD:-}"
-  unset BOOT_POOL ROOT_POOL PART_TYPE BOOT_PARTITION ROOT_PARTITION \
-    ENCRYPT ROOT_POOL_PASSWD
+  local root_passwd="$ROOT_PASSWD"
+  unset DISK BOOT_POOL ROOT_POOL PART_TYPE BOOT_PARTITION ROOT_PARTITION TZ \
+    ENCRYPT ROOT_POOL_PASSWD ROOT_PASSWD
 
-  find_dev "$DISK"
+  # Find the persistent named disk device
+  find_dev "$disk_name"
   local disk_dev="$FIND_DEV"
   unset FIND_DEV
 
@@ -58,17 +113,18 @@ main() {
   # Install base system
   gen_fstab "$root_pool"
   add_bootstrap_repo_keys
-  add_bootstrap_override_repo
-  install_base
+  add_bootstrap_override_repo \
+    "$base_path" "$override_repo" "$repo_path_prefix" "$repo_path"
+  install_base "$base_path" "$override_repo" "$repo_path_prefix" "$repo_path"
   install_hardware_specific_pkgs
   setup_zpool_cache "$root_pool"
   setup_boot_pool_mounting "$boot_pool"
-  set_root_passwd
+  set_root_passwd "$root_passwd"
   enable_services "$boot_pool"
   install_grub "$root_pool"
 
   # Initially configure base system
-  set_timezone
+  set_timezone "$tz"
   setup_clock
   generate_locales
   find_fastest_mirrors
@@ -81,52 +137,25 @@ main() {
   finish
 }
 
-print_help() {
-  echo "$PROGRAM $version
-
-$author
-
-Arch Linux with ZFS installer.
-
-USAGE:
-        $PROGRAM [FLAGS] [OPTIONS] <DISK> <NETIF>
-
-FLAGS:
-    -e  Encrypt the partition for the zpool (default: no)
-    -h  Prints this message
-    -V  Prints version information
-
-OPTIONS:
-    -b <PARTITION>            Choose a boot partition for type partition
-                              (ex: nvme0n1p3)
-    -E <ROOT_POOL_PASSWD_FILE> Read the root pool password from file
-                              (default: prompt)
-    -p <PARTITION_TYPE>       Choose a partitioning type (default: whole)
-                              (values: existing, remaining, whole)
-    -P <ROOT_PASSWD_FILE>     Read initial root password from file
-                              (default: prompt)
-    -r <PARTITION>            Choose a root partition for type partition
-                              (ex: nvme0n1p4)
-    -t <TZ>                   Timezone (ex: \`America/Edmonton')
-                              (default: \`UTC')
-
-ARGS:
-    <DISK>      The disk to use for installation (ex: \`nvme0n1')
-                This can be found by using the \`lsblk' program.
-    <NETIF>     The network interface to setup for DHCP (ex: \`ens33')
-                This can be found by using the \`ip addr' program.
-"
-}
-
 parse_cli_args() {
+  local program version author
+  program="$1"
+  shift
+  version="$1"
+  shift
+  author="$1"
+  shift
+
   # The name of the boot zpool
   BOOT_POOL="bpool"
   # The name of the root zpool
   ROOT_POOL="rpool"
   # Default partition type to whole
-  PART_TYPE=whole
+  PART_TYPE="whole"
   # Default timezone to UTC
-  TZ=UTC
+  TZ="UTC"
+  # Default to not encrypt the root pool
+  ENCRYPT=""
 
   OPTIND=1
   # Parse command line flags and options
@@ -140,7 +169,7 @@ parse_cli_args() {
         ;;
       E)
         if [ ! -f "$OPTARG" ]; then
-          print_help
+          print_usage "$program" "$version" "$author" >&2
           exit_with "Pool encrypt password file does not exist: $OPTARG" 3
         fi
         ROOT_POOL_PASSWD="$(cat "$OPTARG")"
@@ -151,7 +180,7 @@ parse_cli_args() {
             # skip
             ;;
           *)
-            print_help
+            print_usage "$program" "$version" "$author" >&2
             exit_with "Invalid partition type: $OPTARG" 2
             ;;
         esac
@@ -159,7 +188,7 @@ parse_cli_args() {
         ;;
       P)
         if [ ! -f "$OPTARG" ]; then
-          print_help
+          print_usage "$program" "$version" "$author" >&2
           exit_with "Password file does not exist: $OPTARG" 3
         fi
         ROOT_PASSWD="$(cat "$OPTARG")"
@@ -171,42 +200,41 @@ parse_cli_args() {
         TZ="$OPTARG"
         ;;
       V)
-        echo "$PROGRAM $version"
+        echo "$program $version"
         exit 0
         ;;
       h)
-        print_help
+        print_usage "$program" "$version" "$author"
         exit 0
         ;;
       \?)
-        print_help
+        print_usage "$program" "$version" "$author" >&2
         exit_with "Invalid option: -$OPTARG" 1
         ;;
     esac
   done
-  # Shift off all parsed token in `$*` so that the subcommand is now `$1`.
   shift "$((OPTIND - 1))"
 
   if [[ -z "${1:-}" ]]; then
-    print_help
+    print_usage >&2
     exit_with "Required argument: <DISK>" 2
   fi
   DISK="$1"
   shift
 
   if [[ -z "${1:-}" ]]; then
-    print_help
+    print_usage >&2
     exit_with "Required argument: <NETIF>" 2
   fi
   NETIF="$1"
   shift
 
   if [[ "$PART_TYPE" == "existing" && -z "${BOOT_PARTITION:-}" ]]; then
-    print_help
+    print_usage >&2
     exit_with "Boot partition (-b) required when partition type is 'existing'" 2
   fi
   if [[ "$PART_TYPE" == "existing" && -z "${ROOT_PARTITION:-}" ]]; then
-    print_help
+    print_usage >&2
     exit_with "Root partition (-r) required when partition type is 'existing'" 2
   fi
 
@@ -254,7 +282,7 @@ partition_disk() {
       partition_whole_disk "$disk_dev"
       ;;
     *)
-      print_help
+      print_usage
       exit_with "Invalid partition type: $part_type" 2
       ;;
   esac
@@ -685,26 +713,38 @@ add_bootstrap_repo_keys() {
 }
 
 add_bootstrap_override_repo() {
-  if has_local_override_repo; then
+  local base_path="$1"
+  local override_repo="$2"
+  local repo_path_prefix="$3"
+  local repo_path="$4"
+
+  if has_local_override_repo "$override_repo"; then
     local local_repo_path
-    local_repo_path="$(readlink -f "$(dirname "$0")/$OVERRIDE_REPO")"
+    local_repo_path="$(readlink -f "$base_path/$override_repo")"
 
-    info "Detected [$OVERRIDE_REPO] repository to use for bootstrapping"
+    info "Detected [$override_repo] repository to use for bootstrapping"
 
-    mkdir -pv "$REPO_PATH"
-    cp -rv "$local_repo_path"/*.pkg.tar.xz* "$REPO_PATH"
+    mkdir -pv "$repo_path"
+    cp -rv "$local_repo_path"/*.pkg.tar.xz* "$repo_path"
 
-    find "$REPO_PATH" -name '*.pkg.tar.xz' -print0 \
-      | xargs -0 repo-add "$REPO_PATH/$OVERRIDE_REPO.db.tar.xz"
+    find "$repo_path" -name '*.pkg.tar.xz' -print0 \
+      | xargs -0 repo-add "$repo_path/$override_repo.db.tar.xz"
 
-    info "Adding [$OVERRIDE_REPO] repository to /etc/pacman.conf"
-    insert_into_pacman_conf "$(override_repo_block)" /etc/pacman.conf
+    info "Adding [$override_repo] repository to /etc/pacman.conf"
+    insert_into_pacman_conf \
+      "$(override_repo_block "$override_repo" "$repo_path_prefix")" \
+      /etc/pacman.conf
 
     pacman -Sy --noconfirm
   fi
 }
 
 install_base() {
+  local base_path="$1"
+  local override_repo="$2"
+  local repo_path_prefix="$3"
+  local repo_path="$4"
+
   local extra_pkgs=(
     zfs-linux
     intel-ucode grub efibootmgr os-prober
@@ -715,7 +755,8 @@ install_base() {
   info "Bootstrapping base installation with pacstrap"
   pacstrap /mnt base
 
-  add_override_repo
+  add_override_repo \
+    "$base_path" "$override_repo" "$repo_path_prefix" "$repo_path"
   add_archzfs_repo
 
   info "Installing extra base packages"
@@ -742,23 +783,30 @@ install_base() {
 }
 
 add_override_repo() {
-  local mounted_repo_path
-  mounted_repo_path="/mnt$REPO_PATH"
+  local base_path="$1"
+  local override_repo="$2"
+  local repo_path_prefix="$3"
+  local repo_path="$4"
 
-  info "Creating [$OVERRIDE_REPO] repository root $mounted_repo_path"
+  local mounted_repo_path
+  mounted_repo_path="/mnt$repo_path"
+
+  info "Creating [$override_repo] repository root $mounted_repo_path"
   mkdir -pv "$mounted_repo_path"
 
-  if has_local_override_repo; then
-    info "Copying local [$OVERRIDE_REPO] repository packages to system"
-    cp -rv "$(dirname "$0")/$OVERRIDE_REPO"/*.pkg.tar.xz* "$mounted_repo_path"
+  if has_local_override_repo "$override_repo"; then
+    info "Copying local [$override_repo] repository packages to system"
+    cp -rv "$base_path/$override_repo"/*.pkg.tar.xz* "$mounted_repo_path"
   fi
 
-  info "Preparing [$OVERRIDE_REPO] repository locally"
-  in_chroot "find $REPO_PATH -name '*.pkg.tar.xz' -print0 \
-      | xargs -0 repo-add $REPO_PATH/$OVERRIDE_REPO.db.tar.xz"
+  info "Preparing [$override_repo] repository locally"
+  in_chroot "find $repo_path -name '*.pkg.tar.xz' -print0 \
+      | xargs -0 repo-add $repo_path/$override_repo.db.tar.xz"
 
-  info "Adding [$OVERRIDE_REPO] repository to /mnt/etc/pacman.conf"
-  insert_into_pacman_conf "$(override_repo_block)" /mnt/etc/pacman.conf
+  info "Adding [$override_repo] repository to /mnt/etc/pacman.conf"
+  insert_into_pacman_conf \
+    "$(override_repo_block "$override_repo" "$repo_path_prefix")" \
+    /mnt/etc/pacman.conf
 }
 
 add_archzfs_repo() {
@@ -821,8 +869,10 @@ nope() {
 }
 
 set_root_passwd() {
+  local root_passwd="$1"
+
   info "Set initial root password"
-  in_chroot "chpasswd <<< 'root:$ROOT_PASSWD'"
+  in_chroot "chpasswd <<< 'root:$root_passwd'"
 }
 
 enable_services() {
@@ -877,10 +927,12 @@ install_grub() {
 }
 
 set_timezone() {
+  local tz="$1"
+
   # * https://wiki.archlinux.org/index.php/Time
   # * https://wiki.archlinux.org/index.php/Systemd-timesyncd
-  info "Setting up timezone to $TZ"
-  in_chroot "timedatectl set-timezone '$TZ'"
+  info "Setting up timezone to $tz"
+  in_chroot "timedatectl set-timezone '$tz'"
 }
 
 setup_clock() {

@@ -3,6 +3,7 @@
 main() {
   set -eu
   if [[ -n "${DEBUG:-}" ]]; then set -x; fi
+  if [[ -n "${TRACE:-}" ]]; then set -xv; fi
 
   # shellcheck source=_common.sh
   . "${0%/*}/../_common.sh"
@@ -15,34 +16,42 @@ main() {
   need_cmd pacman
   need_cmd rm
 
+  # TODO: remove when refactoring `info` is complete
   PROGRAM="$(basename "$0")"
-  WORKDIR="$(mktemp -d -p /home -t "$(basename "$0")".XXXXXXXX)" || exit 12
-  trap 'cleanup' INT TERM EXIT
 
-  local arch
+  local workdir
+  workdir="$(mktemp -d -p /home -t "$(basename "$0")".XXXXXXXX)" || exit 12
+  # shellcheck disable=SC2064
+  trap "cleanup '$workdir'" INT TERM EXIT
+
+  local arch override_repo repo_path_prefix repo_path base_path
+  # The current system architecture
   arch="$(uname -m)"
-
   # The name of the override repo
-  OVERRIDE_REPO=override
+  override_repo="override"
   # The parent path of all local repos
-  REPO_PATH_PREFIX=/var/local/pacman
+  repo_path_prefix=/var/local/pacman
   # The parent path of the override repo
-  REPO_PATH="$REPO_PATH_PREFIX/$OVERRIDE_REPO/$arch"
+  repo_path="$repo_path_prefix/$override_repo/$arch"
+  # The root directory where the source code lives
+  base_path="$(dirname "$0")"
 
-  prepare
-  add_override_repo
-  add_zfs_repo
-  add_zfs_package
-  add_openssh
-  build_image
+  prepare "$workdir"
+  add_override_repo "$workdir" "$base_path" "$override_repo" "$repo_path"
+  add_zfs_repo "$workdir"
+  add_zfs_package "$workdir"
+  add_openssh "$workdir"
+  build_image "$workdir" "$base_path"
 
-  info "All done, image is in $(dirname "$0")/out"
+  info "All done, image is in $base_path/out"
 }
 
 cleanup() {
+  local workdir="$1"
+
   local e=$?
-  info "Cleanup up $WORKDIR"
-  rm -rf "$WORKDIR"
+  info "Cleanup up $workdir"
+  rm -rf "$workdir"
   if [[ -n "${WEB_PID:-}" ]]; then
     info "Stopping web server"
     kill "$WEB_PID"
@@ -51,14 +60,105 @@ cleanup() {
 }
 
 prepare() {
-  info "Preparing system and $WORKDIR"
+  local workdir="$1"
 
-  mkdir -pv "$WORKDIR"
+  info "Preparing system and $workdir"
+
+  mkdir -pv "$workdir"
   # Freshen package database and upgrade
   pacman -Syyu --noconfirm
   # Install the `archiso` package
   pacman -S --noconfirm archiso
-  cp -rv /usr/share/archiso/configs/releng/* "$WORKDIR"
+  cp -rv /usr/share/archiso/configs/releng/* "$workdir"
+}
+
+add_override_repo() {
+  local workdir="$1"
+  local base_path="$2"
+  local override_repo="$3"
+  local repo_path="$4"
+
+  if has_local_override_repo "$override_repo"; then
+    local local_repo_path content
+    local_repo_path="$(readlink -f "$base_path/$override_repo")"
+
+    info "Detected [$override_repo] repository to use for bootstrapping"
+
+    mkdir -pv "$repo_path"
+    cp -rv "$local_repo_path"/*.pkg.tar.xz* "$repo_path"
+
+    find "$repo_path" -name '*.pkg.tar.xz' -print0 \
+      | xargs -0 repo-add "$repo_path/$override_repo.db.tar.xz"
+
+    start_web_server "$repo_path" "8000"
+
+    # Read complex, interpolated string into a $content variable using leading
+    # full tab indentation syntax
+    read -r -d '' content <<-CONTENT
+	#OVERRIDE_BEGIN
+	[$override_repo]
+	SigLevel = Optional TrustAll
+	Server = http://127.0.0.1:8000
+	#OVERRIDE_END
+	CONTENT
+    insert_into_pacman_conf "$content" "$workdir/pacman.conf"
+
+    cat <<-'EOF' >>"$workdir/airootfs/root/customize_airootfs.sh"
+
+	# Remove the temporary [override] repo
+	sed -i -e '/#OVERRIDE_BEGIN/,/#OVERRIDE_END/{N;d;}' /etc/pacman.conf
+	EOF
+  fi
+}
+
+add_zfs_repo() {
+  local workdir="$1"
+
+  info "Adding [archzfs] repository to $workdir/pacman.conf"
+  insert_into_pacman_conf "$(archzfs_repo_block)" "$workdir/pacman.conf"
+
+  info "Importing [archzfs] repository key"
+  pacman-key -r F75D9D76
+  pacman-key --lsign-key F75D9D76
+}
+
+add_zfs_package() {
+  local workdir="$1"
+
+  info "Adding the archzfs-linux package to the image"
+  echo "archzfs-linux" >>"$workdir/packages.x86_64"
+}
+
+add_openssh() {
+  local workdir="$1"
+
+  info "Adding the OpenSSH to the image"
+
+  cat <<-'EOF' >>"$workdir/airootfs/root/customize_airootfs.sh"
+
+	# Add user arch with no home directory, in group 'wheel' and using 'zsh'
+	useradd -M -G wheel -s /usr/bin/zsh arch
+
+	# Set passwords
+	echo "arch:install" | chpasswd
+	echo "root:install" | chpasswd
+
+	# Enable sshd service
+	systemctl enable sshd.service
+	EOF
+}
+
+build_image() {
+  local workdir="$1"
+  local base_path="$2"
+
+  info "Building image"
+
+  cd "$workdir"
+  mkdir -pv out
+  ./build.sh -v
+  mkdir -v -p "$base_path/out"
+  cp -v out/*.iso "$base_path/out/"
 }
 
 start_web_server() {
@@ -80,81 +180,6 @@ start_web_server() {
   WEB_PID=$!
 
   return 0
-}
-
-add_override_repo() {
-  if has_local_override_repo; then
-    local local_repo_path content
-    local_repo_path="$(readlink -f "$(dirname "$0")/$OVERRIDE_REPO")"
-
-    info "Detected [$OVERRIDE_REPO] repository to use for bootstrapping"
-
-    mkdir -pv "$REPO_PATH"
-    cp -rv "$local_repo_path"/*.pkg.tar.xz* "$REPO_PATH"
-
-    find "$REPO_PATH" -name '*.pkg.tar.xz' -print0 \
-      | xargs -0 repo-add "$REPO_PATH/$OVERRIDE_REPO.db.tar.xz"
-
-    start_web_server "$REPO_PATH" "8000"
-
-    # Read complex, interpolated string into a $content variable using leading
-    # full tab indentation syntax
-    read -r -d '' content <<-CONTENT
-	#OVERRIDE_BEGIN
-	[$OVERRIDE_REPO]
-	SigLevel = Optional TrustAll
-	Server = http://127.0.0.1:8000
-	#OVERRIDE_END
-	CONTENT
-    insert_into_pacman_conf "$content" "$WORKDIR/pacman.conf"
-
-    cat <<-'EOF' >>"$WORKDIR/airootfs/root/customize_airootfs.sh"
-
-	# Remove the temporary [override] repo
-	sed -i -e '/#OVERRIDE_BEGIN/,/#OVERRIDE_END/{N;d;}' /etc/pacman.conf
-	EOF
-  fi
-}
-
-add_zfs_repo() {
-  info "Adding [archzfs] repository to $WORKDIR/pacman.conf"
-  insert_into_pacman_conf "$(archzfs_repo_block)" "$WORKDIR/pacman.conf"
-
-  info "Importing [archzfs] repository key"
-  pacman-key -r F75D9D76
-  pacman-key --lsign-key F75D9D76
-}
-
-add_zfs_package() {
-  info "Adding the archzfs-linux package to the image"
-  echo "archzfs-linux" >>"$WORKDIR/packages.x86_64"
-}
-
-add_openssh() {
-  info "Adding the OpenSSH to the image"
-
-  cat <<-'EOF' >>"$WORKDIR/airootfs/root/customize_airootfs.sh"
-
-	# Add user arch with no home directory, in group 'wheel' and using 'zsh'
-	useradd -M -G wheel -s /usr/bin/zsh arch
-
-	# Set passwords
-	echo "arch:install" | chpasswd
-	echo "root:install" | chpasswd
-
-	# Enable sshd service
-	systemctl enable sshd.service
-	EOF
-}
-
-build_image() {
-  info "Building image"
-
-  cd "$WORKDIR"
-  mkdir -pv out
-  ./build.sh -v
-  mkdir -v -p "$(dirname "$0")/out"
-  cp -v out/*.iso "$(dirname "$0")/out/"
 }
 
 main "$@" || exit 99
