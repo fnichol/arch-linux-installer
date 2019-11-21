@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 
 print_usage() {
-  need_cmd sed
-
   local program="$1"
   local version="$2"
   local author="$3"
@@ -59,6 +57,36 @@ main() {
 
   # shellcheck source=_common.sh
   . "${0%/*}/_common.sh"
+
+  need_cmd arch-chroot
+  need_cmd awk
+  need_cmd basename
+  need_cmd cat
+  need_cmd chmod
+  need_cmd cp
+  need_cmd curl
+  need_cmd dirname
+  need_cmd find
+  need_cmd genfstab
+  need_cmd grep
+  need_cmd mkdir
+  need_cmd mkfs.fat
+  need_cmd modprobe
+  need_cmd mount
+  need_cmd pacman
+  need_cmd pacman-key
+  need_cmd readlink
+  need_cmd rm
+  need_cmd sed
+  need_cmd sgdisk
+  need_cmd sort
+  need_cmd tail
+  need_cmd udevadm
+  need_cmd umount
+  need_cmd uname
+  need_cmd xargs
+  need_cmd zfs
+  need_cmd zpool
 
   local arch override_repo repo_path_prefix repo_path base_path
   # The current system architecture
@@ -945,10 +973,6 @@ setup_boot_pool_mounting() {
   cat <<-EOF >>/mnt/etc/fstab
 	$boot_pool/BOOT/default	/boot	zfs	nodev,relatime,xattr,posixacl,x-systemd.requires=zfs-mount.service	0 0
 	EOF
-}
-
-nope() {
-  return
 }
 
 set_root_passwd() {
