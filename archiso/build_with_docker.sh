@@ -3,6 +3,7 @@
 main() {
   set -eu
   if [[ -n "${DEBUG:-}" ]]; then set -x; fi
+  if [[ -n "${TRACE:-}" ]]; then set -xv; fi
 
   local cwd default_program
   cwd="$(pwd)"
@@ -32,4 +33,6 @@ main() {
   time docker run "${args[@]}"
 }
 
-main "$@" || exit 99
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@" || exit 99
+fi
