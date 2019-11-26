@@ -1,15 +1,46 @@
 #!/usr/bin/env bash
 
+print_usage() {
+  local program="$1"
+  local version="$2"
+  local author="$3"
+
+  echo "$program $version
+
+    Arch Linux remote installer.
+
+    USAGE:
+        $program [FLAGS] <HOST> <ARGS>...
+
+    FLAGS:
+        -h, --help      Prints this message
+        -v, --verbose   Prints verbose output of the \`install.sh' program
+        -V, --version   Prints version information
+
+    ARGS:
+        <ARGS>      Arguments are passed to the \`install.sh' program.
+        <HOST>      Host running the ArchISO live image.
+
+    AUTHOR:
+        $author
+    " | sed 's/^ \{1,4\}//g'
+}
+
 main() {
   set -eu
   if [[ -n "${DEBUG:-}" ]]; then set -x; fi
+  if [[ -n "${TRACE:-}" ]]; then set -xv; fi
 
-  version='0.1.0'
-  author='Fletcher Nichol <fnichol@nichol.ca>'
-  PROGRAM="$(basename "$0")"
+  # shellcheck source=vendor/lib/libsh.sh
+  . "${0%/*}/vendor/lib/libsh.sh"
+
+  local program version author
+  program="$(basename "$0")"
+  version="0.1.0"
+  author="Fletcher Nichol <fnichol@nichol.ca>"
 
   # Parse CLI arguments and set local variables
-  parse_cli_args "$@"
+  parse_cli_args "$program" "$version" "$author" "$@"
   local host="$HOST"
   local args=("${ARGS[@]}")
   local verbose="$VERBOSE"
@@ -20,48 +51,58 @@ main() {
   run_install "$verbose" "$host" "${args[@]}"
 }
 
-print_help() {
-  echo "$PROGRAM $version
-
-$author
-
-Arch Linux remote installer.
-
-USAGE:
-        $PROGRAM [FLAGS] <HOST> <ARGS>...
-
-FLAGS:
-    -h  Prints this message
-    -v  Prints verbose output of the \`install.sh' program
-    -V  Prints version information
-
-ARGS:
-    <ARGS>      Arguments are passed to the \`install.sh' program.
-    <HOST>      Host running the ArchISO live image.
-"
-}
-
 parse_cli_args() {
+  local program version author
+  program="$1"
+  shift
+  version="$1"
+  shift
+  author="$1"
+  shift
+
   VERBOSE=""
 
   OPTIND=1
   # Parse command line flags and options
-  while getopts ":vVh" opt; do
+  while getopts ":hvV-:" opt; do
     case $opt in
+      h)
+        print_usage "$program" "$version" "$author"
+        exit 0
+        ;;
       v)
         VERBOSE=true
         ;;
       V)
-        echo "$PROGRAM $version"
+        print_version "$program" "$version"
         exit 0
         ;;
-      h)
-        print_help
-        exit 0
+      -)
+        case "$OPTARG" in
+          help)
+            print_usage "$program" "$version" "$author"
+            exit 0
+            ;;
+          verbose)
+            VERBOSE=true
+            ;;
+          version)
+            print_version "$program" "$version" "true"
+            exit 0
+            ;;
+          '')
+            # "--" terminates argument processing
+            break
+            ;;
+          *)
+            print_usage "$program" "$version" "$author" >&2
+            die "invalid argument --$OPTARG"
+            ;;
+        esac
         ;;
       \?)
-        print_help
-        exit_with "Invalid option: -$OPTARG" 1
+        print_usage "$program" "$version" "$author" >&2
+        die "invalid option: -$OPTARG"
         ;;
     esac
   done
@@ -69,8 +110,8 @@ parse_cli_args() {
   shift "$((OPTIND - 1))"
 
   if [[ -z "${1:-}" ]]; then
-    print_help
-    exit_with "Required argument: <HOST>" 2
+    print_usage "$program" "$version" "$author" >&2
+    die "required argument: <HOST>"
   fi
   HOST="$1"
   shift
@@ -96,6 +137,7 @@ copy_installation_files() {
     -r \
     ./override* \
     ./*.sh \
+    ./vendor \
     "root@$host:"
 }
 
