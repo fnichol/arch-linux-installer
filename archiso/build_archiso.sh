@@ -7,8 +7,8 @@ main() {
 
   # shellcheck source=vendor/lib/libsh.sh
   . "${0%/*}/../vendor/lib/libsh.sh"
-  # shellcheck source=_common.sh
-  . "${0%/*}/../_common.sh"
+  # shellcheck source=lib/common.sh
+  . "${0%/*}/../lib/common.sh"
 
   need_cmd basename
   need_cmd cat

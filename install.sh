@@ -49,8 +49,8 @@ main() {
 
   # shellcheck source=vendor/lib/libsh.sh
   . "${0%/*}/vendor/lib/libsh.sh"
-  # shellcheck source=_common.sh
-  . "${0%/*}/_common.sh"
+  # shellcheck source=lib/common.sh
+  . "${0%/*}/lib/common.sh"
 
   need_cmd arch-chroot
   need_cmd awk
@@ -1112,7 +1112,7 @@ copy_create_user_script() {
   cp -p -v "$base_path/lib/create_user.tmpl.sh" "$target"
   {
     echo
-    cat "$base_path/_common.sh"
+    cat "$base_path/lib/common.sh"
     echo
     cat "$base_path/vendor/lib/libsh.sh"
     echo
