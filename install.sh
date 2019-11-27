@@ -231,7 +231,7 @@ parse_cli_args() {
         TZ="$OPTARG"
         ;;
       V)
-        echo "$program $version"
+        print_version "$program" "$version"
         exit 0
         ;;
       -)
@@ -304,7 +304,7 @@ parse_cli_args() {
             die "missing required argument for --$OPTARG option"
             ;;
           version)
-            echo "$program $version"
+            print_version "$program" "$version" "true"
             exit 0
             ;;
           '')
