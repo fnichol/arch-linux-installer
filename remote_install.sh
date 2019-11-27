@@ -34,6 +34,11 @@ main() {
   # shellcheck source=vendor/lib/libsh.sh
   . "${0%/*}/vendor/lib/libsh.sh"
 
+  need_cmd basename
+  need_cmd scp
+  need_cmd ssh
+  need_cmd ssh-copy-id
+
   local program version author
   program="$(basename "$0")"
   version="0.1.0"
@@ -122,7 +127,9 @@ parse_cli_args() {
 authenticate() {
   local host="$1"
 
+  section "Authenticating 'root@$host'"
   ssh-copy-id \
+    -f \
     -o UserKnownHostsFile=/dev/null \
     -o StrictHostKeyChecking=no \
     "root@$host"
@@ -131,6 +138,7 @@ authenticate() {
 copy_installation_files() {
   local host="$1"
 
+  section "Uploading installation files"
   scp \
     -o UserKnownHostsFile=/dev/null \
     -o StrictHostKeyChecking=no \
@@ -147,6 +155,7 @@ run_install() {
   local host="$1"
   shift
 
+  section "Running installer on 'root@$host'"
   ssh \
     -o UserKnownHostsFile=/dev/null \
     -o StrictHostKeyChecking=no \
