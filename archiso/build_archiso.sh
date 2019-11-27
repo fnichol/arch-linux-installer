@@ -5,6 +5,8 @@ main() {
   if [[ -n "${DEBUG:-}" ]]; then set -x; fi
   if [[ -n "${TRACE:-}" ]]; then set -xv; fi
 
+  # shellcheck source=vendor/lib/libsh.sh
+  . "${0%/*}/../vendor/lib/libsh.sh"
   # shellcheck source=_common.sh
   . "${0%/*}/../_common.sh"
 
@@ -15,9 +17,6 @@ main() {
   need_cmd mktemp
   need_cmd pacman
   need_cmd rm
-
-  # TODO: remove when refactoring `info` is complete
-  PROGRAM="$(basename "$0")"
 
   local workdir
   workdir="$(mktemp -d -p /home -t "$(basename "$0")".XXXXXXXX)" || exit 12
@@ -182,4 +181,6 @@ start_web_server() {
   return 0
 }
 
-main "$@" || exit 99
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@" || exit 99
+fi

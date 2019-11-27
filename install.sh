@@ -47,14 +47,8 @@ main() {
   if [[ -n "${DEBUG:-}" ]]; then set -x; fi
   if [[ -n "${TRACE:-}" ]]; then set -xv; fi
 
-  local program version author
-  program="$(basename "$0")"
-  version="0.1.0"
-  author="Fletcher Nichol <fnichol@nichol.ca>"
-
-  # TODO: remove when refactoring `info` is complete
-  PROGRAM="$program"
-
+  # shellcheck source=vendor/lib/libsh.sh
+  . "${0%/*}/vendor/lib/libsh.sh"
   # shellcheck source=_common.sh
   . "${0%/*}/_common.sh"
 
@@ -87,6 +81,11 @@ main() {
   need_cmd xargs
   need_cmd zfs
   need_cmd zpool
+
+  local program version author
+  program="$(basename "$0")"
+  version="0.1.0"
+  author="Fletcher Nichol <fnichol@nichol.ca>"
 
   local arch override_repo repo_path_prefix repo_path base_path
   # The current system architecture
@@ -198,7 +197,7 @@ parse_cli_args() {
       E)
         if [[ ! -f "$OPTARG" ]]; then
           print_usage "$program" "$version" "$author" >&2
-          exit_with "pool encrypt password file does not exist: $OPTARG" 3
+          die "pool encrypt password file does not exist: $OPTARG"
         fi
         ROOT_POOL_PASSWD="$(cat "$OPTARG")"
         ;;
@@ -213,7 +212,7 @@ parse_cli_args() {
             ;;
           *)
             print_usage "$program" "$version" "$author" >&2
-            exit_with "invalid partition type: $OPTARG" 2
+            die "invalid partition type: $OPTARG"
             ;;
         esac
         PART_TYPE="$OPTARG"
@@ -221,7 +220,7 @@ parse_cli_args() {
       P)
         if [[ ! -f "$OPTARG" ]]; then
           print_usage "$program" "$version" "$author" >&2
-          exit_with "password file does not exist: $OPTARG" 3
+          die "password file does not exist: $OPTARG"
         fi
         ROOT_PASSWD="$(cat "$OPTARG")"
         ;;
@@ -243,7 +242,7 @@ parse_cli_args() {
             ;;
           boot-part*)
             print_usage "$program" "$version" "$author" >&2
-            exit_with "missing required argument for --$OPTARG option" 1
+            die "missing required argument for --$OPTARG option"
             ;;
           encrypt)
             ENCRYPT=true
@@ -251,13 +250,13 @@ parse_cli_args() {
           encrypt-pass=?*)
             if [[ ! -f "$OPTARG" ]]; then
               print_usage "$program" "$version" "$author" >&2
-              exit_with "pool encrypt password file does not exist: $OPTARG" 3
+              die "pool encrypt password file does not exist: $OPTARG"
             fi
             ROOT_POOL_PASSWD="$(cat "$long_optarg")"
             ;;
           encrypt-pass*)
             print_usage "$program" "$version" "$author" >&2
-            exit_with "missing required argument for --$OPTARG option" 1
+            die "missing required argument for --$OPTARG option"
             ;;
           help)
             print_usage "$program" "$version" "$author"
@@ -270,39 +269,39 @@ parse_cli_args() {
                 ;;
               *)
                 print_usage "$program" "$version" "$author" >&2
-                exit_with "invalid partition type: $long_optarg" 2
+                die "invalid partition type: $long_optarg"
                 ;;
             esac
             PART_TYPE="$long_optarg"
             ;;
           partition*)
             print_usage "$program" "$version" "$author" >&2
-            exit_with "missing required argument for --$OPTARG option" 1
+            die "missing required argument for --$OPTARG option"
             ;;
           root-part=?*)
             ROOT_PARTITION="$long_optarg"
             ;;
           root-part*)
             print_usage "$program" "$version" "$author" >&2
-            exit_with "missing required argument for --$OPTARG option" 1
+            die "missing required argument for --$OPTARG option"
             ;;
           root-pass=?*)
             if [[ ! -f "$OPTARG" ]]; then
               print_usage "$program" "$version" "$author" >&2
-              exit_with "password file does not exist: $OPTARG" 3
+              die "password file does not exist: $OPTARG"
             fi
             ROOT_PASSWD="$(cat "$long_optarg")"
             ;;
           root-pass*)
             print_usage "$program" "$version" "$author" >&2
-            exit_with "missing required argument for --$OPTARG option" 1
+            die "missing required argument for --$OPTARG option"
             ;;
           timezone=?*)
             TZ="$long_optarg"
             ;;
           timezone*)
             print_usage "$program" "$version" "$author" >&2
-            exit_with "missing required argument for --$OPTARG option" 1
+            die "missing required argument for --$OPTARG option"
             ;;
           version)
             echo "$program $version"
@@ -314,13 +313,13 @@ parse_cli_args() {
             ;;
           *)
             print_usage "$program" "$version" "$author" >&2
-            exit_with "invalid argument --$OPTARG" 1
+            die "invalid argument --$OPTARG"
             ;;
         esac
         ;;
       \?)
         print_usage "$program" "$version" "$author" >&2
-        exit_with "invalid option: -$OPTARG" 1
+        die "invalid option: -$OPTARG"
         ;;
     esac
   done
@@ -328,25 +327,25 @@ parse_cli_args() {
 
   if [[ -z "${1:-}" ]]; then
     print_usage >&2
-    exit_with "Required argument: <DISK>" 2
+    die "required argument: <DISK>"
   fi
   DISK="$1"
   shift
 
   if [[ -z "${1:-}" ]]; then
     print_usage >&2
-    exit_with "Required argument: <NETIF>" 2
+    die "required argument: <NETIF>"
   fi
   NETIF="$1"
   shift
 
   if [[ "$PART_TYPE" == "existing" && -z "${BOOT_PARTITION:-}" ]]; then
     print_usage >&2
-    exit_with "Boot partition (-b) required when partition type is 'existing'" 2
+    die "Boot partition (-b) required when partition type is 'existing'"
   fi
   if [[ "$PART_TYPE" == "existing" && -z "${ROOT_PARTITION:-}" ]]; then
     print_usage >&2
-    exit_with "Root partition (-r) required when partition type is 'existing'" 2
+    die "Root partition (-r) required when partition type is 'existing'"
   fi
 
   if [[ -n "${ENCRYPT:-}" ]]; then
@@ -394,7 +393,7 @@ partition_disk() {
       ;;
     *)
       print_usage
-      exit_with "Invalid partition type: $part_type" 2
+      die "Invalid partition type: $part_type"
       ;;
   esac
 }
@@ -573,7 +572,7 @@ find_dev() {
     sleep 3
   done
 
-  exit_with "Could not find partition ID for /dev/$device_name" 10
+  die "Could not find partition ID for /dev/$device_name"
 }
 
 # Finds the EFI System Partition (EFI) on a given disk device.
@@ -589,7 +588,7 @@ find_esp_dev() {
 
   esp_part="$(sgdisk --print "$disk_dev" | awk '$6 == "EF00" { print $1 }')"
   if [[ -z "$esp_dev" ]]; then
-    exit_with "Cannot find EFI System Partition (ESP) on '$disk_dev'" 5
+    die "Cannot find EFI System Partition (ESP) on '$disk_dev'"
   fi
 
   FIND_ESP_DEV="${disk_dev}-part${esp_part}"
@@ -612,7 +611,7 @@ wait_on_part_dev() {
     sleep 3
   done
 
-  exit_with "Could not find partition device '$part_dev'" 10
+  die "Could not find partition device '$part_dev'"
 }
 
 format_esp() {
@@ -882,8 +881,7 @@ install_base() {
   # that if it is not, then the entire set has failed and terminate the
   # program.
   if ! in_chroot "pacman -Qi zfs-linux" >/dev/null 2>&1; then
-    exit_with \
-      "Installation of zfs-linux failed, check kernel version support" 21
+    die "Installation of zfs-linux failed, check kernel version support"
   fi
 
   info "Setting sudoers policy"

@@ -1,34 +1,5 @@
 #!/usr/bin/env bash
 
-info() {
-  case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
-      printf -- "   \033[1;36;40m%s: \033[1;37;40m%s\033[0m\n" "$PROGRAM" "${1:-}"
-      ;;
-    *)
-      printf -- "   %s: %s\n" "$PROGRAM" "${1:-}"
-      ;;
-  esac
-}
-
-exit_with() {
-  case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
-      printf -- "\\033[1;31mERROR: \\033[1;37m%s\\033[0m\\n" "${1:-}"
-      ;;
-    *)
-      printf -- "ERROR: %s\\n" "${1:-}"
-      ;;
-  esac
-  exit "${2:-99}"
-}
-
-need_cmd() {
-  if ! command -v "$1" >/dev/null 2>&1; then
-    exit_with "Required command '$1' not found on PATH" 127
-  fi
-}
-
 read_passwd() {
   local entity="$1"
   local retype
