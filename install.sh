@@ -157,7 +157,7 @@ main() {
   find_fastest_mirrors
 
   # Prepare user creation script for `root`
-  copy_create_user_script
+  copy_create_user_script "$base_path" "$version" "$root_pool"
 
   # Finalize pools and end installer
   finalize_pools "$boot_pool" "$root_pool"
@@ -1102,8 +1102,27 @@ find_fastest_mirrors() {
 }
 
 copy_create_user_script() {
-  info "Copying create_user script"
-  cp -p -v "${0%/*}/create_user.sh" /mnt/root/
+  local base_path="$1"
+  local version="$2"
+  local root_pool="$3"
+
+  local target="/mnt/root/create_user.sh"
+
+  info "Preparing 'create_user.sh' script for root user"
+  cp -p -v "$base_path/lib/create_user.tmpl.sh" "$target"
+  {
+    echo
+    cat "$base_path/_common.sh"
+    echo
+    cat "$base_path/vendor/lib/libsh.sh"
+    echo
+    echo 'main "$@"'
+  } >>"$target"
+  sed -i \
+    -e "s,@@version@@,${version},g" \
+    -e "s,@@root_pool@@,${root_pool},g" \
+    "$target"
+  chmod 0755 "$target"
 }
 
 finalize_pools() {

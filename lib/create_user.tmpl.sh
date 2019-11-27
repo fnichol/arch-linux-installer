@@ -7,19 +7,18 @@ print_usage() {
 
   echo "$program $version
 
-    Arch Linux remote installer.
+    Creates an Arch Linux user.
 
     USAGE:
-        $program [FLAGS] <HOST> <ARGS>...
+        $program [FLAGS] <USERNAME> <FULLNAME>
 
     FLAGS:
         -h, --help      Prints this message
-        -v, --verbose   Prints verbose output of the \`install.sh' program
         -V, --version   Prints version information
 
     ARGS:
-        <ARGS>      Arguments are passed to the \`install.sh' program.
-        <HOST>      Host running the ArchISO live image.
+        <USERNAME>    Admin username (ex: \`jdoe')
+        <FULLNAME>    Admin name (ex: \`Jane Doe')
 
     AUTHOR:
         $author
@@ -31,29 +30,36 @@ main() {
   if [[ -n "${DEBUG:-}" ]]; then set -x; fi
   if [[ -n "${TRACE:-}" ]]; then set -xv; fi
 
-  # shellcheck source=vendor/lib/libsh.sh
-  . "${0%/*}/vendor/lib/libsh.sh"
-
-  need_cmd basename
-  need_cmd scp
-  need_cmd ssh
-  need_cmd ssh-copy-id
-
   local program version author
   program="$(basename "$0")"
-  version="0.1.0"
+  version="@@version@@"
   author="Fletcher Nichol <fnichol@nichol.ca>"
 
-  # Parse CLI arguments and set local variables
-  parse_cli_args "$program" "$version" "$author" "$@"
-  local host="$HOST"
-  local args=("${ARGS[@]}")
-  local verbose="$VERBOSE"
-  unset HOST ARGS VERBOSE
+  # The name of the root zpool
+  local root_pool="@@root_pool@@"
 
-  authenticate "$host"
-  copy_installation_files "$host"
-  run_install "$verbose" "$host" "${args[@]}"
+  parse_cli_args "$program" "$version" "$author" "$@"
+  local user="$USER"
+  local comment="$COMMENT"
+  unset USER COMMENT
+
+  need_cmd basename
+  need_cmd chmod
+  need_cmd chown
+  need_cmd chpasswd
+  need_cmd rm
+  need_cmd tar
+  need_cmd useradd
+  need_cmd zfs
+
+  section "Creating '$user' with dedicated ZFS dataset"
+
+  read_passwd "$user"
+  # shellcheck disable=SC2153
+  local passwd="$PASSWD"
+  unset PASSWD
+
+  create_user "$user" "$comment" "$passwd" "$root_pool"
 }
 
 parse_cli_args() {
@@ -65,18 +71,13 @@ parse_cli_args() {
   author="$1"
   shift
 
-  VERBOSE=""
-
   OPTIND=1
   # Parse command line flags and options
-  while getopts ":hvV-:" opt; do
+  while getopts "hV-:" opt; do
     case $opt in
       h)
         print_usage "$program" "$version" "$author"
         exit 0
-        ;;
-      v)
-        VERBOSE=true
         ;;
       V)
         print_version "$program" "$version"
@@ -87,9 +88,6 @@ parse_cli_args() {
           help)
             print_usage "$program" "$version" "$author"
             exit 0
-            ;;
-          verbose)
-            VERBOSE=true
             ;;
           version)
             print_version "$program" "$version" "true"
@@ -116,55 +114,54 @@ parse_cli_args() {
 
   if [[ -z "${1:-}" ]]; then
     print_usage "$program" "$version" "$author" >&2
-    die "required argument: <HOST>"
+    die "required argument: <USERNAME>"
   fi
-  HOST="$1"
+  USER="$1"
   shift
 
-  ARGS=("$@")
-}
-
-authenticate() {
-  local host="$1"
-
-  section "Authenticating 'root@$host'"
-  ssh-copy-id \
-    -f \
-    -o UserKnownHostsFile=/dev/null \
-    -o StrictHostKeyChecking=no \
-    "root@$host"
-}
-
-copy_installation_files() {
-  local host="$1"
-
-  section "Uploading installation files"
-  scp \
-    -o UserKnownHostsFile=/dev/null \
-    -o StrictHostKeyChecking=no \
-    -r \
-    ./lib \
-    ./override* \
-    ./*.sh \
-    ./vendor \
-    "root@$host:"
-}
-
-run_install() {
-  local verbose="$1"
+  if [[ -z "${1:-}" ]]; then
+    print_usage "$program" "$version" "$author" >&2
+    die "required argument: <FULLNAME>"
+  fi
+  COMMENT="$1"
   shift
-  local host="$1"
-  shift
-
-  section "Running installer on 'root@$host'"
-  ssh \
-    -o UserKnownHostsFile=/dev/null \
-    -o StrictHostKeyChecking=no \
-    -t \
-    "root@$host" \
-    env DEBUG="$verbose" ./install.sh "$@"
 }
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  main "$@" || exit 99
-fi
+create_user() {
+  local user="$1"
+  local comment="$2"
+  local passwd="$3"
+  local pool="$4"
+  local dataset="$pool/home/$user"
+
+  info "Creating ZFS dataset for '$user'"
+  zfs create "$dataset"
+
+  sleep 2
+
+  info "Creating user '$user'"
+  useradd \
+    --create-home \
+    --user-group \
+    --groups wheel \
+    --shell /bin/bash \
+    --base-dir /tmp \
+    --comment "$comment" \
+    "$user"
+
+  info "Migrating user home to $dataset ZFS dataset"
+  chown -R "${user}:${user}" "/home/$user"
+  chmod 0750 "/home/$user"
+  (
+    cd "/tmp/$user"
+    tar cpf - . | tar xpf - -C "/home/$user"
+  )
+  usermod -d "/home/$user" "$user"
+  rm -rf "/tmp/$user"
+
+  info "Delegating ZFS datasets under $dataset to '$user'"
+  zfs allow "$user" create,mount,mountpoint,snapshot "$dataset"
+
+  info "Setting password for '$user'"
+  chpasswd <<<"$user:$passwd"
+}
