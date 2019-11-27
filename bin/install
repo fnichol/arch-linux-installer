@@ -52,36 +52,6 @@ main() {
   # shellcheck source=lib/common.sh
   . "${0%/*}/../lib/common.sh"
 
-  need_cmd arch-chroot
-  need_cmd awk
-  need_cmd basename
-  need_cmd cat
-  need_cmd chmod
-  need_cmd cp
-  need_cmd curl
-  need_cmd dirname
-  need_cmd find
-  need_cmd genfstab
-  need_cmd grep
-  need_cmd mkdir
-  need_cmd mkfs.fat
-  need_cmd modprobe
-  need_cmd mount
-  need_cmd pacman
-  need_cmd pacman-key
-  need_cmd readlink
-  need_cmd rm
-  need_cmd sed
-  need_cmd sgdisk
-  need_cmd sort
-  need_cmd tail
-  need_cmd udevadm
-  need_cmd umount
-  need_cmd uname
-  need_cmd xargs
-  need_cmd zfs
-  need_cmd zpool
-
   local program version author
   program="$(basename "$0")"
   version="0.1.0"
@@ -113,6 +83,36 @@ main() {
   local root_passwd="$ROOT_PASSWD"
   unset DISK BOOT_POOL ROOT_POOL PART_TYPE BOOT_PARTITION ROOT_PARTITION TZ \
     ENCRYPT ROOT_POOL_PASSWD ROOT_PASSWD
+
+  need_cmd arch-chroot
+  need_cmd awk
+  need_cmd basename
+  need_cmd cat
+  need_cmd chmod
+  need_cmd cp
+  need_cmd curl
+  need_cmd dirname
+  need_cmd find
+  need_cmd genfstab
+  need_cmd grep
+  need_cmd mkdir
+  need_cmd mkfs.fat
+  need_cmd modprobe
+  need_cmd mount
+  need_cmd pacman
+  need_cmd pacman-key
+  need_cmd readlink
+  need_cmd rm
+  need_cmd sed
+  need_cmd sgdisk
+  need_cmd sort
+  need_cmd tail
+  need_cmd udevadm
+  need_cmd umount
+  need_cmd uname
+  need_cmd xargs
+  need_cmd zfs
+  need_cmd zpool
 
   # Find the persistent named disk device
   find_dev "$disk_name"

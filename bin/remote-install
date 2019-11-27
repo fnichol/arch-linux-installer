@@ -34,11 +34,6 @@ main() {
   # shellcheck source=vendor/lib/libsh.sh
   . "${0%/*}/../vendor/lib/libsh.sh"
 
-  need_cmd basename
-  need_cmd scp
-  need_cmd ssh
-  need_cmd ssh-copy-id
-
   local program version author
   program="$(basename "$0")"
   version="0.1.0"
@@ -50,6 +45,11 @@ main() {
   local args=("${ARGS[@]}")
   local verbose="$VERBOSE"
   unset HOST ARGS VERBOSE
+
+  need_cmd basename
+  need_cmd scp
+  need_cmd ssh
+  need_cmd ssh-copy-id
 
   authenticate "$host"
   copy_installation_files "$host"
