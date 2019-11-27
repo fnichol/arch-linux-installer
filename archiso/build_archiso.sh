@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 main() {
-  set -eu
+  set -euo pipefail
   if [[ -n "${DEBUG:-}" ]]; then set -x; fi
   if [[ -n "${TRACE:-}" ]]; then set -xv; fi
 
