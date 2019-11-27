@@ -48,9 +48,9 @@ main() {
   if [[ -n "${TRACE:-}" ]]; then set -xv; fi
 
   # shellcheck source=vendor/lib/libsh.sh
-  . "${0%/*}/vendor/lib/libsh.sh"
+  . "${0%/*}/../vendor/lib/libsh.sh"
   # shellcheck source=lib/common.sh
-  . "${0%/*}/lib/common.sh"
+  . "${0%/*}/../lib/common.sh"
 
   need_cmd arch-chroot
   need_cmd awk
@@ -97,7 +97,7 @@ main() {
   # The parent path of the override repo
   repo_path="$repo_path_prefix/$override_repo/$arch"
   # The root directory where the source code lives
-  base_path="$(dirname "$0")"
+  base_path="$(dirname "$0")/.."
 
   # Parse CLI arguments and set local variables
   parse_cli_args "$program" "$version" "$author" "$@"
@@ -1106,10 +1106,10 @@ copy_create_user_script() {
   local version="$2"
   local root_pool="$3"
 
-  local target="/mnt/root/create_user.sh"
+  local target="/mnt/root/create-user"
 
-  info "Preparing 'create_user.sh' script for root user"
-  cp -p -v "$base_path/lib/create_user.tmpl.sh" "$target"
+  info "Preparing 'create-user.sh' script for root user"
+  cp -p -v "$base_path/lib/create-user.tmpl.sh" "$target"
   {
     echo
     cat "$base_path/lib/common.sh"

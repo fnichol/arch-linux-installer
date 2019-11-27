@@ -32,7 +32,7 @@ main() {
   if [[ -n "${TRACE:-}" ]]; then set -xv; fi
 
   # shellcheck source=vendor/lib/libsh.sh
-  . "${0%/*}/vendor/lib/libsh.sh"
+  . "${0%/*}/../vendor/lib/libsh.sh"
 
   need_cmd basename
   need_cmd scp
@@ -143,10 +143,10 @@ copy_installation_files() {
     -o UserKnownHostsFile=/dev/null \
     -o StrictHostKeyChecking=no \
     -r \
+    ./bin \
     ./lib \
-    ./override* \
-    ./*.sh \
     ./vendor \
+    ./override* \
     "root@$host:"
 }
 
@@ -162,7 +162,7 @@ run_install() {
     -o StrictHostKeyChecking=no \
     -t \
     "root@$host" \
-    env DEBUG="$verbose" ./install.sh "$@"
+    env DEBUG="$verbose" ./bin/install "$@"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
