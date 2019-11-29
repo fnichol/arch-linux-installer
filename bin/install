@@ -15,6 +15,7 @@ print_usage() {
     FLAGS:
         -e, --encrypt   Encrypts the partition for the zpool (default: no)
         -h, --help      Prints help information
+        -s, --swap      Include a swap partition (default: no)
         -V, --version   Prints version information
 
     OPTIONS:
@@ -28,8 +29,12 @@ print_usage() {
                                     (default: prompt)
         -r, --root-part=<PART>      Choose a root partition for type partition
                                     (ex: nvme0n1p4)
+        -S, --swap-part=<PART>      Choose a swap partition for type partition
+                                    (ex: nvme0n1p2)
         -t, --timezone=<TZ>         Timezone (ex: \`America/Edmonton')
                                     (default: \`UTC')
+        -W, --swap-pass=<FILE>      Read the swap partition password from file
+                                    (default: prompt)
 
     ARGS:
         <DISK>      The disk to use for installation (ex: \`nvme0n1')
@@ -77,16 +82,20 @@ main() {
   local part_type="$PART_TYPE"
   local exist_boot_part="${BOOT_PARTITION:-}"
   local exist_root_part="${ROOT_PARTITION:-}"
+  local exist_swap_part="${SWAP_PARTITION:-}"
   local tz="$TZ"
   local encrypt="$ENCRYPT"
+  local swap="$SWAP"
   local root_pool_passwd="${ROOT_POOL_PASSWD:-}"
+  local swap_passwd="${SWAP_PASSWD:-}"
   local root_passwd="$ROOT_PASSWD"
-  unset DISK BOOT_POOL ROOT_POOL PART_TYPE BOOT_PARTITION ROOT_PARTITION TZ \
-    ENCRYPT ROOT_POOL_PASSWD ROOT_PASSWD
+  unset DISK BOOT_POOL ROOT_POOL PART_TYPE BOOT_PARTITION ROOT_PARTITION \
+    SWAP_PARTITION TZ ENCRYPT SWAP ROOT_POOL_PASSWD SWAP_PASSWD ROOT_PASSWD
 
   need_cmd arch-chroot
   need_cmd awk
   need_cmd basename
+  need_cmd blkid
   need_cmd cat
   need_cmd chmod
   need_cmd cp
@@ -110,6 +119,7 @@ main() {
   need_cmd udevadm
   need_cmd umount
   need_cmd uname
+  need_cmd vmstat
   need_cmd xargs
   need_cmd zfs
   need_cmd zpool
@@ -120,15 +130,21 @@ main() {
   unset FIND_DEV
 
   # Partition disk and determine partition devices
-  partition_disk "$part_type" "$disk_dev" "$exist_boot_part" "$exist_root_part"
+  partition_disk "$part_type" "$disk_dev" "$swap" \
+    "$exist_boot_part" "$exist_root_part" "$exist_swap_part"
   local esp_dev="$ESP_DEV"
   local boot_pool_dev="$BOOT_POOL_DEV"
   local root_pool_dev="$ROOT_POOL_DEV"
-  unset ESP_DEV BOOT_POOL_DEV ROOT_POOL_DEV
+  local swap_dev="${SWAP_DEV:-}"
+  unset ESP_DEV BOOT_POOL_DEV ROOT_POOL_DEV SWAP_DEV
 
   # Format partitions, create ZFS zpools, and prepare the pools
   load_zfs
   format_esp "$part_type" "$esp_dev"
+  encrypt_swap "$swap" "$swap_dev" "$encrypt" "$swap_passwd"
+  local swap_mapper_name="${SWAP_MAPPER_NAME:-}"
+  unset SWAP_MAPPER_NAME
+  format_swap "$swap" "$swap_dev" "$encrypt" "$swap_mapper_name"
   create_boot_zpool "$boot_pool" "$boot_pool_dev"
   create_root_zpool "$root_pool" "$root_pool_dev" "$encrypt" "$root_pool_passwd"
   create_root_datasets "$root_pool"
@@ -138,7 +154,7 @@ main() {
     "$esp_dev" "$boot_pool" "$root_pool" "$encrypt" "$root_pool_passwd"
 
   # Install base system
-  gen_fstab "$root_pool"
+  gen_fstab "$root_pool" "$swap"
   add_bootstrap_repo_keys
   add_bootstrap_override_repo \
     "$base_path" "$override_repo" "$repo_path_prefix" "$repo_path"
@@ -148,7 +164,8 @@ main() {
   setup_boot_pool_mounting "$boot_pool"
   set_root_passwd "$root_passwd"
   enable_services "$boot_pool"
-  install_grub "$root_pool"
+  install_grub \
+    "$base_path" "$root_pool" "$swap_dev" "$encrypt" "$swap_mapper_name"
 
   # Initially configure base system
   set_timezone "$tz"
@@ -160,7 +177,8 @@ main() {
   copy_create_user_script "$base_path" "$version" "$root_pool"
 
   # Finalize pools and end installer
-  finalize_pools "$boot_pool" "$root_pool"
+  finalize_pools \
+    "$boot_pool" "$root_pool" "$swap" "$swap_dev" "$encrypt" "$swap_mapper_name"
   finish
 }
 
@@ -183,10 +201,12 @@ parse_cli_args() {
   TZ="UTC"
   # Default to not encrypt the root pool
   ENCRYPT=""
+  # Default to not have a swap partition
+  SWAP=""
 
   OPTIND=1
   # Parse command line flags and options
-  while getopts ":b:eE:p:P:r:t:Vh-:" opt; do
+  while getopts ":b:eE:p:P:r:sS:t:VW:h-:" opt; do
     case $opt in
       b)
         BOOT_PARTITION="$OPTARG"
@@ -227,12 +247,25 @@ parse_cli_args() {
       r)
         ROOT_PARTITION="$OPTARG"
         ;;
+      s)
+        SWAP=true
+        ;;
+      S)
+        SWAP_PARTITION="$OPTARG"
+        ;;
       t)
         TZ="$OPTARG"
         ;;
       V)
         print_version "$program" "$version"
         exit 0
+        ;;
+      W)
+        if [[ ! -f "$OPTARG" ]]; then
+          print_usage "$program" "$version" "$author" >&2
+          die "swap partition password file does not exist: $OPTARG"
+        fi
+        SWAP_PASSWD="$(cat "$OPTARG")"
         ;;
       -)
         long_optarg="${OPTARG#*=}"
@@ -296,6 +329,27 @@ parse_cli_args() {
             print_usage "$program" "$version" "$author" >&2
             die "missing required argument for --$OPTARG option"
             ;;
+          swap)
+            SWAP=true
+            ;;
+          swap-part=?*)
+            SWAP_PARTITION="$long_optarg"
+            ;;
+          swap-part*)
+            print_usage "$program" "$version" "$author" >&2
+            die "missing required argument for --$OPTARG option"
+            ;;
+          swap-pass=?*)
+            if [[ ! -f "$OPTARG" ]]; then
+              print_usage "$program" "$version" "$author" >&2
+              die "swap password file does not exist: $OPTARG"
+            fi
+            SWAP_PASSWD="$(cat "$long_optarg")"
+            ;;
+          swap-pass*)
+            print_usage "$program" "$version" "$author" >&2
+            die "missing required argument for --$OPTARG option"
+            ;;
           timezone=?*)
             TZ="$long_optarg"
             ;;
@@ -347,12 +401,24 @@ parse_cli_args() {
     print_usage >&2
     die "Root partition (-r) required when partition type is 'existing'"
   fi
+  if [[ "$PART_TYPE" == "existing" && -n "$SWAP" && -z "${SWAP_PARTITION:-}" ]]; then
+    print_usage >&2
+    die "Swap partition (-S) required when partition type is 'existing'"
+  fi
 
   if [[ -n "${ENCRYPT:-}" ]]; then
     if [[ -z "${ROOT_POOL_PASSWD:-}" ]]; then
       read_passwd "$ROOT_POOL encryption"
       ROOT_POOL_PASSWD="$PASSWD"
       unset PASSWD
+    fi
+
+    if [[ -n "${SWAP:-}" ]]; then
+      if [[ -z "${SWAP_PASSWD:-}" ]]; then
+        read_passwd "swap partition encryption"
+        SWAP_PASSWD="$PASSWD"
+        unset PASSWD
+      fi
     fi
   fi
 
@@ -377,19 +443,23 @@ partition_disk() {
   shift
   local disk_dev="$1"
   shift
+  local swap="$1"
+  shift
 
   case "$part_type" in
     existing)
       local boot_pool_dev="$1"
       local root_pool_dev="$2"
+      local swap_dev="$3"
 
-      partition_existing_disk "$disk_dev" "$boot_pool_dev" "$root_pool_dev"
+      partition_existing_disk \
+        "$disk_dev" "$swap" "$boot_pool_dev" "$root_pool_dev" "$swap_dev"
       ;;
     remaining)
-      partition_remaining_disk "$disk_dev"
+      partition_remaining_disk "$disk_dev" "$swap"
       ;;
     whole)
-      partition_whole_disk "$disk_dev"
+      partition_whole_disk "$disk_dev" "$swap"
       ;;
     *)
       print_usage
@@ -407,14 +477,28 @@ partition_disk() {
 # * `ESP_DEV`: ESP partition device
 # * `BOOT_POOL_DEV`: boot pool partition device
 # * `ROOT_POOL_DEV`: root pool partition device
+#
+# If a swap partition was enabled, then the following global variables are also
+# set:
+#
+# * `SWAP_DEV`: swap partition device
 partition_existing_disk() {
   local disk_dev="$1"
-  local boot_pool_dev_name="$2"
-  local root_pool_dev_name="$3"
+  local swap="$2"
+  local boot_pool_dev_name="$3"
+  local root_pool_dev_name="$4"
+  local swap_dev_name="$5"
 
   find_esp_dev "$disk_dev"
   ESP_DEV="$FIND_ESP_DEV"
   unset FIND_ESP_DEV
+
+  if [[ -n "$swap" ]]; then
+    find_dev "$swap_dev_name"
+    SWAP_DEV="$FIND_DEV"
+    unset FIND_DEV
+    info "Using existing swap partition '$SWAP_DEV'"
+  fi
 
   find_dev "$boot_pool_dev_name"
   BOOT_POOL_DEV="$FIND_DEV"
@@ -437,8 +521,14 @@ partition_existing_disk() {
 # * `ESP_DEV`: ESP partition device
 # * `BOOT_POOL_DEV`: boot pool partition device
 # * `ROOT_POOL_DEV`: root pool partition device
+#
+# If a swap partition was enabled, then the following global variables are also
+# set:
+#
+# * `SWAP_DEV`: swap partition device
 partition_remaining_disk() {
   local disk_dev="$1"
+  local swap="$2"
 
   info "Partitioning remaining space on disk '$disk_dev'"
 
@@ -448,9 +538,18 @@ partition_remaining_disk() {
 
   local part boot_pool_part root_pool_part
   part="$(sgdisk --print "$disk_dev" | tail -n 1 | awk '{ print $1 }')"
-  boot_pool_part=$((part + 1))
-  root_pool_part=$((part + 1))
+  if [[ -n "$swap" ]]; then
+    part=$((part + 1))
+    local swap_part="$part"
+  fi
+  part=$((part + 1))
+  boot_pool_part="$part"
+  part=$((part + 1))
+  root_pool_part="$part"
 
+  if [[ -n "$swap" ]]; then
+    partition_swap "$disk_dev" "$swap_part"
+  fi
   partition_boot_pool "$disk_dev" "$boot_pool_part"
   partition_root_pool "$disk_dev" "$root_pool_part"
 }
@@ -464,11 +563,26 @@ partition_remaining_disk() {
 # * `ESP_DEV`: ESP partition device
 # * `BOOT_POOL_DEV`: boot pool partition device
 # * `ROOT_POOL_DEV`: root pool partition device
+#
+# If a swap partition was enabled, then the following global variables are also
+# set:
+#
+# * `SWAP_DEV`: swap partition device
 partition_whole_disk() {
   local disk_dev="$1"
-  local esp_part=1
-  local boot_pool_part=2
-  local root_pool_part=3
+  local swap="$2"
+
+  local part=0
+  part=$((part + 1))
+  local esp_part="$part"
+  if [[ -n "$swap" ]]; then
+    part=$((part + 1))
+    local swap_part="$part"
+  fi
+  part=$((part + 1))
+  local boot_pool_part="$part"
+  part=$((part + 1))
+  local root_pool_part="$part"
 
   info "Partitioning whole disk '$disk_dev'"
 
@@ -476,6 +590,9 @@ partition_whole_disk() {
   sgdisk --zap-all "$disk_dev"
 
   partition_esp "$disk_dev" "$esp_part"
+  if [[ -n "$swap" ]]; then
+    partition_swap "$disk_dev" "$swap_part"
+  fi
   partition_boot_pool "$disk_dev" "$boot_pool_part"
   partition_root_pool "$disk_dev" "$root_pool_part"
 }
@@ -499,6 +616,29 @@ partition_esp() {
     --typecode="$part:EF00" \
     "$disk_dev"
   wait_on_part_dev "$ESP_DEV"
+}
+
+# Creates a partition for swap on a given disk and sets a global variable.
+#
+# # Side Effects
+#
+# This function sets the following global variables:
+#
+# * `SWAP_DEV`: swap partition device
+partition_swap() {
+  local disk_dev="$1"
+  local part="$2"
+
+  local ram_mb
+  ram_mb="$(vmstat -s -S M | grep 'total memory$' | awk '{ print $1 }')"
+
+  SWAP_DEV="${disk_dev}-part${part}"
+  info "Creating swap partition '$SWAP_DEV'"
+  sgdisk \
+    --new="$part:0:+${ram_mb}M" \
+    --typecode="$part:8200" \
+    "$disk_dev"
+  wait_on_part_dev "$SWAP_DEV"
 }
 
 # Creates a partition for the boot pool on a given disk and sets a global
@@ -621,6 +761,48 @@ format_esp() {
   if [[ "$part_type" == "whole" ]]; then
     info "Formatting EFI System Partition (ESP) filesystem on '$esp_dev'"
     mkfs.fat -F32 "$esp_dev"
+  fi
+}
+
+encrypt_swap() {
+  local swap="$1"
+  local swap_dev="$2"
+  local encrypt="$3"
+  local swap_passwd="$4"
+
+  if [[ -n "$swap" && -n "$encrypt" ]]; then
+    info "Creating encrypted partition for swap on '$swap_dev'"
+    echo -n "$swap_passwd" | cryptsetup luksFormat \
+      --cipher aes-xts-plain64 \
+      --hash sha512 \
+      --key-file - \
+      "$swap_dev"
+
+    SWAP_MAPPER_NAME="crypt-swap"
+    info \
+      "Opening encrypted partition for swap on '/dev/mapper/$SWAP_MAPPER_NAME'"
+    echo -n "$swap_passwd" \
+      | cryptsetup open --type luks "$swap_dev" "$SWAP_MAPPER_NAME"
+  fi
+}
+
+format_swap() {
+  local swap="$1"
+  local swap_dev="$2"
+  local encrypt="$3"
+  local swap_mapper_name="$4"
+
+  if [[ -n "$swap" ]]; then
+    local device
+    if [[ -n "$encrypt" ]]; then
+      device="/dev/mapper/$swap_mapper_name"
+    else
+      device="$swap_dev"
+    fi
+
+    info "Setting up a Linux swap area on '$device'"
+    mkswap "$device"
+    swapon "$device"
   fi
 }
 
@@ -810,10 +992,14 @@ mount_pools_for_install() {
 
 gen_fstab() {
   local root_pool="$1"
+  local swap="$2"
 
   info "Using genfstab to generate system /etc/fstab"
   mkdir -pv /mnt/etc
   genfstab -U -p /mnt | grep -E "^$root_pool/ROOT/default" >/mnt/etc/fstab
+  if [[ -n "$swap" ]]; then
+    genfstab -U -p /mnt | awk '$3 == "swap" { print $0 }' >>/mnt/etc/fstab
+  fi
 }
 
 add_bootstrap_repo_keys() {
@@ -1004,12 +1190,53 @@ enable_services() {
 }
 
 install_grub() {
-  local root_pool="$1"
+  local base_path="$1"
+  local root_pool="$2"
+  local swap_dev="$3"
+  local encrypt="$4"
+  local swap_mapper_name="$5"
 
   local root="root=ZFS=$root_pool/ROOT/default"
+
+  info "Preparing kernel arguments with GRUB"
   sed -i \
     -e "s,^\\(GRUB_CMDLINE_LINUX\\)=\"\\(.*\\)\"$,\\1=\"\\2 $root\"," \
     /mnt/etc/default/grub
+
+  if [[ -n "$swap_dev" ]]; then
+    local resume
+    if [[ -n "$encrypt" ]]; then
+      resume="resume=/dev/mapper/$swap_mapper_name"
+    else
+      resume="resume=$swap_dev"
+    fi
+
+    sed -i \
+      -e "s,^\\(GRUB_CMDLINE_LINUX\\)=\"\\(.*\\)\"$,\\1=\"\\2 $resume\"," \
+      /mnt/etc/default/grub
+
+    if [[ -n "$encrypt" ]]; then
+      local partuuid
+      partuuid="$(blkid -o export "$swap_dev" | grep ^PARTUUID)"
+      local cryptswap="cryptswap=$partuuid:$swap_mapper_name"
+
+      sed -i \
+        -e "s,^\\(GRUB_CMDLINE_LINUX\\)=\"\\(.*\\)\"$,\\1=\"\\2 $cryptswap\"," \
+        /mnt/etc/default/grub
+
+      info "Copying 'cryptswap' hook into /etc/initcpio/hooks"
+      mkdir -pv /mnt/etc/initcpio/hooks
+      cp -v \
+        "$base_path/lib/cryptswap.initcpio.hook" \
+        /mnt/etc/initcpio/hooks/cryptswap
+
+      info "Copying 'cryptswap' hook install into /etc/initcpio/install"
+      mkdir -pv /mnt/etc/initcpio/install
+      cp -v \
+        "$base_path/lib/cryptswap.initcpio.install" \
+        /mnt/etc/initcpio/install/cryptswap
+    fi
+  fi
 
   info "Installing GRUB"
   in_chroot \
@@ -1025,7 +1252,18 @@ install_grub() {
   fi
 
   info "Modifying HOOKS in mkinitcpio.conf"
-  sed -i 's|^HOOKS=.*|HOOKS="base udev keyboard autodetect modconf block consolefont zfs filesystems shutdown"|g' /mnt/etc/mkinitcpio.conf
+  local hooks
+  hooks=(base udev keyboard autodetect modconf block consolefont)
+  if [[ -n "$swap_dev" ]]; then
+    if [[ -n "$encrypt" ]]; then
+      # To decrypt swap on boot and after resuming from hibernate
+      hooks+=(encrypt cryptswap)
+    fi
+    # Resuming from hibernate
+    hooks+=(resume)
+  fi
+  hooks+=(zfs filesystems shutdown)
+  sed -i "s,^HOOKS=.*,HOOKS=\"${hooks[*]}\",g" /mnt/etc/mkinitcpio.conf
 
   info "Update initial ramdisk (initrd) with ZFS support"
   in_chroot "mkinitcpio -p linux"
@@ -1128,9 +1366,26 @@ copy_create_user_script() {
 finalize_pools() {
   local boot_pool="$1"
   local root_pool="$2"
+  local swap="$3"
+  local swap_dev="$4"
+  local encrypt="$5"
+  local swap_mapper_name="$6"
 
   info "Unmounting /mnt/boot/efi"
   umount /mnt/boot/efi
+
+  if [[ -n "$swap" ]]; then
+    if [[ -n "$encrypt" ]]; then
+      info "Disabling swap on encrypted partition '$swap_mapper_name'"
+      swapoff "/dev/mapper/$swap_mapper_name"
+
+      info "Closing encrypted swap '$swap_mapper_name'"
+      cryptsetup close "$swap_mapper_name"
+    else
+      info "Disabling swap on '$swap_dev'"
+      swapoff "$swap_dev"
+    fi
+  fi
 
   info "Unmounting ZFS datasets"
   zfs unmount -a
