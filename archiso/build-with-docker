@@ -9,7 +9,7 @@ main() {
 
   local cwd default_program
   cwd="$(pwd)"
-  default_program="/mnt/$(dirname "$0")/build_archiso.sh"
+  default_program="/mnt/$(dirname "$0")/build"
   local args=(
     --rm
     --privileged
