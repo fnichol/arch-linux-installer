@@ -24,7 +24,7 @@ main() {
     args+=(--tty)
     args+=(--interactive)
   fi
-  args+=("${DOCKER_IMAGE:-greyltc/archlinux}")
+  args+=("${DOCKER_IMAGE:-archlinux}")
   if [[ -n "${*:-}" ]]; then
     args+=("$@")
   else
