@@ -10,6 +10,10 @@ main() {
   # shellcheck source=lib/common.sh
   . "${0%/*}/../lib/common.sh"
 
+  if [[ ! -f /etc/arch-release ]]; then
+    die "Program must run on Arch Linux. Try $(dirname "$0")/build-with-docker?"
+  fi
+
   need_cmd basename
   need_cmd cat
   need_cmd cp
