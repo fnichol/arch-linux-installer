@@ -5,6 +5,8 @@ main() {
   if [[ -n "${DEBUG:-}" ]]; then set -x; fi
   if [[ -n "${TRACE:-}" ]]; then set -xv; fi
 
+  need_cmd docker
+
   local cwd default_program
   cwd="$(pwd)"
   default_program="/mnt/$(dirname "$0")/build_archiso.sh"
