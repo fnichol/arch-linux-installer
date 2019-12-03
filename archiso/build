@@ -17,10 +17,12 @@ main() {
   need_cmd basename
   need_cmd cat
   need_cmd cp
+  need_cmd dirname
   need_cmd mkdir
   need_cmd mktemp
   need_cmd pacman
   need_cmd rm
+  need_cmd uname
 
   section "Building an Arch Linux live image with ZFS support"
 
