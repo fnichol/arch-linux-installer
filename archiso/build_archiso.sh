@@ -19,7 +19,8 @@ main() {
   need_cmd rm
 
   local workdir
-  workdir="$(mktemp -d -p /home -t "$(basename "$0")".XXXXXXXX)" || exit 12
+  workdir="$(mktemp -d -p /home -t "$(basename "$0")".XXXXXXXX)" \
+    || die "Cannot create temporary workdir"
   # shellcheck disable=SC2064
   trap "cleanup '$workdir'" INT TERM EXIT
 
