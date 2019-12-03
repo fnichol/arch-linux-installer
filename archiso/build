@@ -22,6 +22,8 @@ main() {
   need_cmd pacman
   need_cmd rm
 
+  section "Building an Arch Linux live image with ZFS support"
+
   local workdir
   workdir="$(mktemp -d -p /home -t "$(basename "$0")".XXXXXXXX)" \
     || die "Cannot create temporary workdir"
