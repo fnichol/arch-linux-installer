@@ -25,8 +25,7 @@ main() {
   local workdir
   workdir="$(mktemp -d -p /home -t "$(basename "$0")".XXXXXXXX)" \
     || die "Cannot create temporary workdir"
-  # shellcheck disable=SC2064
-  trap "cleanup '$workdir'" INT TERM EXIT
+  setup_traps "cleanup '$workdir'"
 
   local arch override_repo repo_path_prefix repo_path base_path
   # The current system architecture
