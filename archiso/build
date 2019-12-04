@@ -41,7 +41,7 @@ main() {
   # The parent path of the override repo
   repo_path="$repo_path_prefix/$override_repo/$arch"
   # The root directory where the source code lives
-  base_path="$(dirname "$0")"
+  base_path="$(readlink -f "$(dirname "$0")")"
 
   prepare "$workdir"
   add_override_repo "$workdir" "$base_path" "$override_repo" "$repo_path"
