@@ -163,7 +163,7 @@ build_image() {
 
   cd "$workdir"
   mkdir -pv out
-  ./build.sh -v \
+  ./build.sh -v -V "$(date --iso-8601=minutes --utc)" \
     || die "Building image failed, could kernel & zfs-linux be out of sync?"
   mkdir -v -p "$base_path/out"
   cp -v out/*.iso "$base_path/out/"
