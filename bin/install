@@ -1378,6 +1378,7 @@ finalize_pools() {
     if [[ -n "$encrypt" ]]; then
       info "Disabling swap on encrypted partition '$swap_mapper_name'"
       swapoff "/dev/mapper/$swap_mapper_name"
+      sleep 2
 
       info "Closing encrypted swap '$swap_mapper_name'"
       cryptsetup close "$swap_mapper_name"
