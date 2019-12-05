@@ -702,7 +702,7 @@ find_dev() {
     while read -r device_id; do
       if [[ "$(readlink -f "$device_id")" == "/dev/$device_name" ]]; then
         FIND_DEV="$device_id"
-        info "Found partition ID for /dev/$device_name: $FIND_DEV"
+        info "Found device by ID for /dev/$device_name: $FIND_DEV"
         return
       fi
     done < <(find /dev/disk/by-id -not -type d | sort --ignore-case)
@@ -724,14 +724,14 @@ find_dev() {
 # * `FIND_ESP_DEV`: found ESP partition device
 find_esp_dev() {
   local disk_dev="$1"
-  local esp_part
+  local esp_dev
 
-  esp_part="$(sgdisk --print "$disk_dev" | awk '$6 == "EF00" { print $1 }')"
+  esp_dev="$(sgdisk --print "$disk_dev" | awk '$6 == "EF00" { print $1 }')"
   if [[ -z "$esp_dev" ]]; then
     die "Cannot find EFI System Partition (ESP) on '$disk_dev'"
   fi
 
-  FIND_ESP_DEV="${disk_dev}-part${esp_part}"
+  FIND_ESP_DEV="${disk_dev}-part${esp_dev}"
   info "Found EFI System Partition (ESP) '$FIND_ESP_DEV'"
   wait_on_part_dev "$FIND_ESP_DEV"
 }
