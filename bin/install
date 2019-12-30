@@ -42,6 +42,29 @@ print_usage() {
         <NETIF>     The network interface to setup for DHCP (ex: \`ens33')
                     This can be found by using the \`ip addr' program.
 
+    EXAMPLES:
+        Example 1 Installing with default behavior
+          The following command installs Arch Linux using the whole disk,
+          without a swap partition, without encryption, and a timezone of
+          \`UTC'.
+
+          # $program /dev/nvme0n1 ens33
+
+        Example 2
+          The following command installs Arch Linux using the whole disk,
+          with a swap partition, with root pool encryption, and a timezone of
+          Mountain time in North America.
+
+          # $program --encrypt --swap -timezone=America/Edmonton \\
+            /dev/nvme0n1 ens33
+
+        Example 3
+          The following command installs Arch Linux using the remaining space
+          on the disk, with a swap partition, without encryption, and a
+          timezone of \`UTC'.
+
+          # $program --partition=remaining --swap /dev/nvme0n1 ens33
+
     AUTHOR:
         $author
     " | sed 's/^ \{1,4\}//g'
