@@ -1,6 +1,8 @@
 include vendor/mk/base.mk
 include vendor/mk/shell.mk
 
+SH_SOURCES += ./bin/install ./bin/remote-install
+
 build:
 .PHONY: build
 
