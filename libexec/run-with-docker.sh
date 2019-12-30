@@ -9,8 +9,37 @@ main() {
   . "${0%/*}/../vendor/lib/libsh.sh"
 
   need_cmd docker
+  need_cmd wc
 
-  local cwd mount_dir default_program
+  local image="${DOCKER_IMAGE:-arch-linux-installer-base}"
+  local debug="${DEBUG:-}"
+
+  if ! image_exists "$image"; then
+    pushd "${0%/*}/../libexec/docker" >/dev/null
+    docker build -t "$image" .
+    popd >/dev/null
+  fi
+
+  run "$image" "$debug" "$@"
+}
+
+image_exists() {
+  local image="$1"
+
+  if [[ $(docker images -q "$image" | wc -l) -gt 0 ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+run() {
+  local image debug cwd mount_dir default_program
+  image="$1"
+  shift
+  debug="$1"
+  shift
+
   cwd="$(pwd)"
   mount_dir="/mnt"
   default_program="bash"
@@ -24,11 +53,11 @@ main() {
     --workdir
     "$mount_dir"
   )
-  if [[ -n "${DEBUG:-}" ]]; then
+  if [[ -n "$debug" ]]; then
     args+=(--env)
-    args+=("DEBUG=$DEBUG")
+    args+=("DEBUG=$debug")
   fi
-  args+=("${DOCKER_IMAGE:-archlinux}")
+  args+=("$image")
   if [[ -n "${*:-}" ]]; then
     args+=("$@")
     section "Running custom command '$*' in a Docker container"
