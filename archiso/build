@@ -75,7 +75,7 @@ prepare() {
   mkdir -pv "$workdir"
   # Freshen package database, upgrade, and install the 'archiso`
   # and supporting packages
-  pacman -Syyu --noconfirm archiso awk grep file wget
+  pacman -Syyu --noconfirm archiso wget
   cp -rv /usr/share/archiso/configs/releng/* "$workdir"
 }
 
