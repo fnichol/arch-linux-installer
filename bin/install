@@ -876,6 +876,10 @@ create_boot_zpool() {
     -O xattr=sa \
     "$boot_pool" \
     "$boot_pool_dev"
+
+  if ! zpool list "$boot_pool" >/dev/null 2>&1; then
+    die "Boot zpool '$boot_pool' failed to create, see error above"
+  fi
 }
 
 create_root_zpool() {
@@ -905,6 +909,10 @@ create_root_zpool() {
       "$root_pool" \
       "$root_pool_dev" \
       <<<"$root_pool_passwd"
+
+    if ! zpool list "$root_pool" >/dev/null 2>&1; then
+      die "Root zpool '$root_pool' failed to create, is the password too short?"
+    fi
   else
     info "Creating the root zpool '$root_pool' on '$root_pool_dev'"
     zpool create \
@@ -921,6 +929,10 @@ create_root_zpool() {
       -O xattr=sa \
       "$root_pool" \
       "$root_pool_dev"
+
+    if ! zpool list "$root_pool" >/dev/null 2>&1; then
+      die "Root zpool '$root_pool' failed to create, see error above"
+    fi
   fi
 }
 
