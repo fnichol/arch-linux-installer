@@ -48,7 +48,7 @@ print_usage() {
           without a swap partition, without encryption, and a timezone of
           \`UTC'.
 
-          # $program /dev/nvme0n1 ens33
+          # $program nvme0n1 ens33
 
         Example 2
           The following command installs Arch Linux using the whole disk,
@@ -56,14 +56,14 @@ print_usage() {
           Mountain time in North America.
 
           # $program --encrypt --swap -timezone=America/Edmonton \\
-            /dev/nvme0n1 ens33
+            nvme0n1 ens33
 
         Example 3
           The following command installs Arch Linux using the remaining space
           on the disk, with a swap partition, without encryption, and a
           timezone of \`UTC'.
 
-          # $program --partition=remaining --swap /dev/nvme0n1 ens33
+          # $program --partition=remaining --swap nvme0n1 ens33
 
     AUTHOR:
         $author
