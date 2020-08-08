@@ -16,11 +16,11 @@
 # --------
 # project: https://github.com/fnichol/libsh
 # author: Fletcher Nichol <fnichol@nichol.ca>
-# version: 0.2.0
-# commit-hash: 862501231edae690f6a28ecee7252c452e1740c0
-# commit-date: 2019-11-25
-# source: https://github.com/fnichol/libsh/tree/v0.2.0
-# archive: https://github.com/fnichol/libsh/archive/v0.2.0.tar.gz
+# version: 0.5.0
+# commit-hash: 2bc3a2bcd68985caf697e165b0ec68042e04e164
+# commit-date: 2020-05-27
+# source: https://github.com/fnichol/libsh/tree/v0.5.0
+# archive: https://github.com/fnichol/libsh/archive/v0.5.0.tar.gz
 #
 
 if [ -n "${KSH_VERSION:-}" ]; then
@@ -65,6 +65,53 @@ check_cmd() {
     unset _cmd
     return 0
   fi
+}
+
+# Tracks a directory for later cleanup in a trap handler.
+#
+# This function can be called immediately after a temp directory is created,
+# before a directory is created, or long after a directory exists. When used in
+# combination with [`trap_cleanup_directories`], all directories registered by
+# calling `cleanup_directory` will be removed if they exist when
+# `trap_cleanup_directories` is invoked.
+#
+# * `@param [String]` path to directory
+# * `@return 0` if successful
+# * `@return 1` if a temp file could not be created
+#
+# [`trap_cleanup_directories`]: #function.trap_cleanup_directories
+#
+# # Global Variables
+#
+# * `__CLEANUP_DIRECTORIES__` used to track the collection of directories to
+#   clean up whose value is a file. If not declared or set, this function will
+#   set it up.
+#
+# # Examples
+#
+# Basic usage:
+#
+# ```sh
+# dir="$(mktemp_directory)"
+# cleanup_directory "$dir"
+# # do work on directory, etc.
+# ```
+cleanup_directory() {
+  local _dir
+  _dir="$1"
+
+  # If a tempfile hasn't been setup yet, create it
+  if [ -z "${__CLEANUP_DIRECTORIES__:-}" ]; then
+    __CLEANUP_DIRECTORIES__="$(mktemp_file)"
+
+    # If the result string is empty, tempfile wasn't created so report failure
+    if [ -z "$__CLEANUP_DIRECTORIES__" ]; then
+      return 1
+    fi
+  fi
+
+  echo "$_dir" >>"$__CLEANUP_DIRECTORIES__"
+  unset _dir
 }
 
 # Tracks a file for later cleanup in a trap handler.
@@ -139,7 +186,7 @@ die() {
   _msg="$1"
 
   case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
+    *term | alacritty | rxvt | screen | screen-* | tmux | tmux-* | xterm-*)
       printf -- "\n\033[1;31;40mxxx \033[1;37;40m%s\033[0m\n\n" "$_msg" >&2
       ;;
     *)
@@ -154,8 +201,9 @@ die() {
 # Downloads the contents at the given URL to the given local file.
 #
 # This implementation attempts to use the `curl` program with a fallback to the
-# `wget` program. The first download program to succeed is used and if all
-# fail, this function returns a non-zero code.
+# `wget` program and a final fallback to the `ftp` program. The first download
+# program to succeed is used and if all fail, this function returns a non-zero
+# code.
 #
 # * `@param [String]` download URL
 # * `@param [String]` destination file
@@ -164,8 +212,8 @@ die() {
 #
 # # Notes
 #
-# At least one of `curl` or `wget` must be compiled with SSL/TLS support to be
-# able to download from `https` sources.
+# At least one of `curl`, `wget`, or `ftp must be compiled with SSL/TLS support
+# to be able to download from `https` sources.
 #
 # # Examples
 #
@@ -221,10 +269,83 @@ download() {
     fi
   fi
 
+  # Attempt to download with ftp, if found. If successful, quick return
+  if check_cmd ftp; then
+    info "Downloading $_url to $_dst (ftp)"
+    _orig_flags="$-"
+    set +e
+    ftp -o "$_dst" "$_url"
+    _code="$?"
+    set "-$(echo "$_orig_flags" | sed s/s//g)"
+    if [ $_code -eq 0 ]; then
+      unset _url _dst _code _orig_flags
+      return 0
+    else
+      local _e
+      _e="ftp failed to download file, perhaps ftp doesn't have"
+      _e="$_e SSL support and/or no CA certificates are present?"
+      warn "$_e"
+      unset _e
+    fi
+  fi
+
   unset _url _dst _code _orig_flags
-  # If we reach this point, wget and curl have failed and we're out of options
-  warn "Downloading requires SSL-enabled 'curl' or 'wget' on PATH"
+  # If we reach this point, curl, wget and ftp have failed and we're out of
+  # options
+  warn "Downloading requires SSL-enabled 'curl', 'wget', or 'ftp' on PATH"
   return 1
+}
+
+# Indents the output from a command while preserving the command's exit code.
+#
+# In minimal/POSIX shells there is no support for `set -o pipefail` which means
+# that the exit code of the first command in a shell pipeline won't be
+# addressable in an easy way. This implementation uses a temp file to ferry the
+# original command's exit code from a subshell back into the main function. The
+# output can be aligned with a pipe to `sed` as before but now we have an
+# implementation which mimicks a `set -o pipefail` which should work on all
+# Bourne shells. Note that the `set -o errexit` is disabled during the
+# command's invocation so that its exit code can be captured.
+#
+# Based on implementation from: https://stackoverflow.com/a/54931544
+#
+# * `@param [String[]]` command and arguments
+# * `@return` the exit code of the command which was executed
+#
+# # Notes
+#
+# In order to preserve the output order of the command, the `stdout` and
+# `stderr` streams are combined, so the command will not emit its `stderr`
+# output to the caller's `stderr` stream.
+#
+# # Examples
+#
+# Basic usage:
+#
+# ```sh
+# indent cat /my/file
+# ```
+indent() {
+  local _ecfile _ec _orig_flags
+
+  need_cmd cat
+  need_cmd rm
+  need_cmd sed
+
+  _ecfile="$(mktemp_file)"
+
+  _orig_flags="$-"
+  set +e
+  {
+    "$@" 2>&1
+    echo "$?" >"$_ecfile"
+  } | sed 's/^/       /'
+  set "-$(echo "$_orig_flags" | sed s/s//g)"
+  _ec="$(cat "$_ecfile")"
+  rm -f "$_ecfile"
+
+  unset _ecfile _orig_flags
+  return "${_ec:-5}"
 }
 
 # Prints an informational, detailed step to standard out.
@@ -250,7 +371,7 @@ info() {
   _msg="$1"
 
   case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
+    *term | alacritty | rxvt | screen | screen-* | tmux | tmux-* | xterm-*)
       printf -- "\033[1;36;40m  - \033[1;37;40m%s\033[0m\n" "$_msg"
       ;;
     *)
@@ -259,6 +380,45 @@ info() {
   esac
 
   unset _msg
+}
+
+# Creates a temporary directory and prints the name to standard output.
+#
+# Most system use the first no-argument version, however Mac OS X 10.10
+# (Yosemite) and older don't allow the no-argument version, hence the second
+# fallback version.
+#
+# All tested invocations will create a file in each platform's suitable
+# temporary directory.
+#
+# * `@param [optional, String] parent directory
+# * `@stdout` path to temporary directory
+# * `@return 0` if successful
+#
+# # Examples
+#
+# Basic usage:
+#
+# ```sh
+# dir="$(mktemp_directory)"
+# # use directory
+# ```
+#
+# With a custom parent directory:
+#
+# ```sh
+# dir="$(mktemp_directory $HOME)"
+# # use directory
+# ```
+mktemp_directory() {
+  local _parent_dir
+  _parent_dir="${1:-}"
+
+  if [ -n "$_parent_dir" ]; then
+    mktemp -d "$_parent_dir/tmp.XXXXXX"
+  else
+    mktemp -d 2>/dev/null || mktemp -d -t tmp
+  fi
 }
 
 # Creates a temporary file and prints the name to standard output.
@@ -270,6 +430,7 @@ info() {
 # All tested invocations will create a file in each platform's suitable
 # temporary directory.
 #
+# * `@param [optional, String] parent directory
 # * `@stdout` path to temporary file
 # * `@return 0` if successful
 #
@@ -281,8 +442,25 @@ info() {
 # file="$(mktemp_file)"
 # # use file
 # ```
+# shellcheck disable=SC2120
+#
+# With a custom parent directory:
+#
+# ```sh
+# dir="$(mktemp_file $HOME)"
+# # use file
+# ```
 mktemp_file() {
-  mktemp 2>/dev/null || mktemp -t tmp
+  local _parent_dir
+  _parent_dir="${1:-}"
+
+  if [ -n "$_parent_dir" ]; then
+    mktemp "$_parent_dir/tmp.XXXXXX"
+  else
+    mktemp 2>/dev/null || mktemp -t tmp
+  fi
+
+  unset _parent_dir
 }
 
 # Prints an error message and exits with a non-zero code if the program is not
@@ -447,7 +625,7 @@ section() {
   _msg="$1"
 
   case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
+    *term | alacritty | rxvt | screen | screen-* | tmux | tmux-* | xterm-*)
       printf -- "\033[1;36;40m--- \033[1;37;40m%s\033[0m\n" "$_msg"
       ;;
     *)
@@ -517,6 +695,41 @@ setup_traps() {
   unset _trap_fun _sig
 }
 
+# Removes any tracked directories registered via [`cleanup_directory`].
+#
+# * `@return 0` whether or not an error has occurred
+#
+# [`cleanup_directory`]: #function.cleanup_directory
+#
+# # Global Variables
+#
+# * `__CLEANUP_DIRECTORIES__` used to track the collection of files to clean up
+#   whose value is a file. If not declared or set, this function will assume
+#   there is no work to do.
+#
+# # Examples
+#
+# Basic usage:
+#
+# ```sh
+# trap trap_cleanup_directories 1 2 3 15 ERR EXIT
+#
+# dir="$(mktemp_directory)"
+# cleanup_directory "$dir"
+# # do work on directory, etc.
+# ```
+trap_cleanup_directories() {
+  set +e
+
+  if [ -n "${__CLEANUP_DIRECTORIES__:-}" ] \
+    && [ -f "$__CLEANUP_DIRECTORIES__" ]; then
+    while read -r directory; do
+      rm -rf "$directory"
+    done <"$__CLEANUP_DIRECTORIES__"
+    rm -f "$__CLEANUP_DIRECTORIES__"
+  fi
+}
+
 # Removes any tracked files registered via [`cleanup_file`].
 #
 # * `@return 0` whether or not an error has occurred
@@ -574,7 +787,7 @@ warn() {
   _msg="$1"
 
   case "${TERM:-}" in
-    *term | xterm-* | rxvt | screen | screen-*)
+    *term | alacritty | rxvt | screen | screen-* | tmux | tmux-* | xterm-*)
       printf -- "\033[1;31;40m!!! \033[1;37;40m%s\033[0m\n" "$_msg"
       ;;
     *)
