@@ -80,6 +80,8 @@ main() {
   # shellcheck source=lib/common.sh
   . "${0%/*}/../lib/common.sh"
 
+  setup_traps trap_cleanup_files
+
   local program version author
   program="$(basename "$0")"
   version="0.1.0"
@@ -1038,9 +1040,16 @@ gen_fstab() {
 }
 
 add_bootstrap_repo_keys() {
+  local gpg_key
+
+  info "Downloading [archzfs] repository key"
+  gpg_key="$(mktemp_file)"
+  cleanup_file "$gpg_key"
+  download "https://archzfs.com/archzfs.gpg" "$gpg_key"
+  pacman-key -a "$gpg_key"
+
   info "Adding [archzfs] repository key to archiso"
-  pacman-key -r F75D9D76
-  pacman-key --lsign-key F75D9D76
+  pacman-key --lsign-key DDF7DB817396A49B2A2723F7403BD972F75D9D76
 }
 
 add_bootstrap_override_repo() {

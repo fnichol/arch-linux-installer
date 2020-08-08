@@ -10,6 +10,8 @@ main() {
   # shellcheck source=lib/common.sh
   . "${0%/*}/../lib/common.sh"
 
+  setup_traps trap_cleanup_files
+
   if [[ ! -f /etc/arch-release ]]; then
     die "Program must run on Arch Linux. Try $(dirname "$0")/build-with-docker?"
   fi
@@ -120,13 +122,19 @@ add_override_repo() {
 
 add_zfs_repo() {
   local workdir="$1"
+  local gpg_key
 
   info "Adding [archzfs] repository to $workdir/pacman.conf"
   insert_into_pacman_conf "$(archzfs_repo_block)" "$workdir/pacman.conf"
 
+  info "Downloading [archzfs] repository key"
+  gpg_key="$(mktemp_file)"
+  cleanup_file "$gpg_key"
+  download "https://archzfs.com/archzfs.gpg" "$gpg_key"
+  pacman-key -a "$gpg_key"
+
   info "Importing [archzfs] repository key"
-  pacman-key -r F75D9D76
-  pacman-key --lsign-key F75D9D76
+  pacman-key --lsign-key DDF7DB817396A49B2A2723F7403BD972F75D9D76
 }
 
 add_zfs_package() {
