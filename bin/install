@@ -75,8 +75,8 @@ main() {
   if [[ -n "${DEBUG:-}" ]]; then set -x; fi
   if [[ -n "${TRACE:-}" ]]; then set -xv; fi
 
-  # shellcheck source=vendor/lib/libsh.sh
-  . "${0%/*}/../vendor/lib/libsh.sh"
+  # shellcheck source=vendor/lib/libsh.full.sh
+  . "${0%/*}/../vendor/lib/libsh.full.sh"
   # shellcheck source=lib/common.sh
   . "${0%/*}/../lib/common.sh"
 
@@ -1396,7 +1396,7 @@ copy_create_user_script() {
     echo
     cat "$base_path/lib/common.sh"
     echo
-    cat "$base_path/vendor/lib/libsh.sh"
+    cat "$base_path/vendor/lib/libsh.full.sh"
     echo
     echo 'main "$@"'
   } >>"$target"

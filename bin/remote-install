@@ -31,8 +31,8 @@ main() {
   if [[ -n "${DEBUG:-}" ]]; then set -x; fi
   if [[ -n "${TRACE:-}" ]]; then set -xv; fi
 
-  # shellcheck source=vendor/lib/libsh.sh
-  . "${0%/*}/../vendor/lib/libsh.sh"
+  # shellcheck source=vendor/lib/libsh.full.sh
+  . "${0%/*}/../vendor/lib/libsh.full.sh"
 
   local program version author
   program="$(basename "$0")"
