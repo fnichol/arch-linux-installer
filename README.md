@@ -86,8 +86,8 @@ AUTHOR:
 
 You can use the `-h`/`--help` flag to get:
 
-```console
-$ ./bin/remote-install --help
+```sh
+./bin/remote-install --help
 
 ```
 
@@ -102,21 +102,22 @@ an `override/` directory which will be used by `archiso/build` to add an
 back to itself. For this, you'll also need to run `repo-add` (on an Arch system)
 in that directory to prepare the metadata files.
 
-```console
-$ ./libexec/run-with-docker
+```sh
+./libexec/run-with-docker
 ```
 
-```console
-$ cd archiso
+```sh
+cd archiso
 ```
 
-```console
-$ mkdir override
-$ cd override
+```sh
+mkdir override
+cd override
 
-$ version=5.3.13.1-1
-$ date=2019/12/02
-$ url="https://archive.archlinux.org/repos/$date/core/os/x86_64"
+version=5.3.13.1-1
+date=2019/12/02
+url="https://archive.archlinux.org/repos/$date/core/os/x86_64"
+```
 
 $ wget $url/linux{,-headers}-${version}-x86_64.pkg.tar.xz{,.sig}
 $ repo-add override.db.tar.xz *.pkg.tar.xz
@@ -132,48 +133,48 @@ _(Optional)_ Once booted, the system may require network connectivity if it
 isn't plugged into wired networking. In this case, connect to a Wifi network
 with:
 
-```console
-$ wifi-menu
+```sh
+wifi-menu
 ```
 
 _(Optional)_ If it's easier to connect to the system remotely, then use SSH and
 connect with the `root` user. To ignore the randomly generated server key use
 `ssh` options with:
 
-```console
-$ ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@$HOST
+```sh
+ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@$HOST
 ```
 
 ### Find Partitions
 
 Let's start by setting up some variables for the _boot_ and _root_ ZFS pools:
 
-```console
-$ boot_pool=bpool
-$ root_pool=rpool
+```sh
+boot_pool=bpool
+root_pool=rpool
 ```
 
 To find the EFI System Partition (ESP):
 
-```console
-$ esp_dev="$(fdisk -l | awk '/EFI System$/ { print $1 }')"
+```sh
+esp_dev="$(fdisk -l | awk '/EFI System$/ { print $1 }')"
 ```
 
 ### Import Pools
 
 Next, import the ZFS pools with:
 
-```console
-$ zpool import -N -d /dev/disk/by-id -R /mnt "$root_pool"
-$ zpool import -N -d /dev/disk/by-id -R /mnt "$boot_pool"
+```sh
+zpool import -N -d /dev/disk/by-id -R /mnt "$root_pool"
+zpool import -N -d /dev/disk/by-id -R /mnt "$boot_pool"
 ```
 
 ### (Optional) Opening Encrypted Partitions
 
 If the _root_ pool is encrypted then decrypt it with:
 
-```console
-$ zfs load-key "$root_pool"
+```sh
+zfs load-key "$root_pool"
 ```
 
 ### Mount Filesystems
@@ -181,34 +182,34 @@ $ zfs load-key "$root_pool"
 The ZFS filesystems need to be mounted in a particular order to replicate how
 they would be presented on a booted system:
 
-```console
+```sh
 # Root fs has `canmount=off` so must be mounted explicitly first
-$ zfs mount "$root_pool/ROOT/default"
+zfs mount "$root_pool/ROOT/default"
 
 # Boot fs has `mountpoint=legacy` so must be mounted with target
-$ mount -t zfs "$boot_pool/BOOT/default" /mnt/boot
+mount -t zfs "$boot_pool/BOOT/default" /mnt/boot
 
 # Remaining fs can be auto-mounted
-$ zfs mount -a
+zfs mount -a
 ```
 
 Finally, the ESP can be mounted:
 
-```console
-$ mount "$esp_dev" /mnt/boot/efi
+```sh
+mount "$esp_dev" /mnt/boot/efi
 ```
 
 ### Chroot into System
 
 Now that the filesystem is setup, enter a `chroot` with:
 
-```
+```sh
 arch-chroot /mnt /bin/bash
 ```
 
 And when done, `exit` to exit the `chroot`:
 
-```
+```sh
 exit
 ```
 
@@ -216,11 +217,11 @@ exit
 
 Unmounting the filesystems work in the reverse order of mounting:
 
-```console
-$ umount /mnt/boot/efi
-$ zfs unmount -a
-$ umount /mnt/boot
-$ zfs unmount "$root_pool/ROOT/default"
+```sh
+umount /mnt/boot/efi
+zfs unmount -a
+umount /mnt/boot
+zfs unmount "$root_pool/ROOT/default"
 ```
 
 ### Export Pools
@@ -228,9 +229,9 @@ $ zfs unmount "$root_pool/ROOT/default"
 Ensure that the ZFS pools are exported so they will cleanly import on the next
 system boot:
 
-```console
-$ zpool export "$boot_pool"
-$ zpool export "$root_pool"
+```sh
+zpool export "$boot_pool"
+zpool export "$root_pool"
 ```
 
 ### Reboot
@@ -238,9 +239,8 @@ $ zpool export "$root_pool"
 And finally, reboot while ensuring that the USB key or CD/DVD is removed on
 bootup:
 
-```console
-$ reboot
-
+```sh
+reboot
 ```
 
 ## References
