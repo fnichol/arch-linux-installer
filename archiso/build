@@ -10,8 +10,6 @@ main() {
   # shellcheck source=lib/common.sh
   . "${0%/*}/../lib/common.sh"
 
-  setup_traps trap_cleanup_files
-
   if [[ ! -f /etc/arch-release ]]; then
     die "Program must run on Arch Linux. Try $(dirname "$0")/build-with-docker?"
   fi
@@ -31,9 +29,9 @@ main() {
   section "Building an Arch Linux live image with ZFS support"
 
   local workdir
-  workdir="$(mktemp -d -p /home -t "$(basename "$0")".XXXXXXXX)" \
-    || die "Cannot create temporary workdir"
-  setup_traps "cleanup '$workdir'"
+  workdir="$(mktemp_directory /home)" || die "Cannot create temporary workdir"
+  cleanup_directory "$workdir"
+  setup_traps cleanup
 
   local arch override_repo repo_path_prefix repo_path base_path
   # The current system architecture
@@ -58,15 +56,12 @@ main() {
 }
 
 cleanup() {
-  local workdir="$1"
-
   set +e
-  info "Cleaning up $workdir"
-  rm -rf "$workdir"
   if [[ -n "${WEB_PID:-}" ]]; then
     info "Stopping web server"
     kill "$WEB_PID"
   fi
+  trap_cleanup_files
 }
 
 prepare() {
@@ -79,6 +74,10 @@ prepare() {
   # and supporting packages
   pacman -Syyu --noconfirm archiso wget
   cp -rv /usr/share/archiso/configs/releng/* "$workdir"
+  # Set a custom version for the ISO which includes time of day
+  # shellcheck disable=SC2016
+  sed -i -e 's,^\(iso_version\)=.*$,\1="$(date --iso-8601=minutes --utc)",' \
+    "$workdir/profiledef.sh"
 }
 
 add_override_repo() {
@@ -94,10 +93,10 @@ add_override_repo() {
     info "Detected [$override_repo] repository to use for bootstrapping"
 
     mkdir -pv "$repo_path"
-    cp -rv "$local_repo_path"/*.pkg.tar.xz* "$repo_path"
+    cp -rv "$local_repo_path"/*.pkg.tar.zst* "$repo_path"
 
-    find "$repo_path" -name '*.pkg.tar.xz' -print0 \
-      | xargs -0 repo-add "$repo_path/$override_repo.db.tar.xz"
+    find "$repo_path" -name '*.pkg.tar.zst' -print0 \
+      | xargs -0 repo-add "$repo_path/$override_repo.db.tar.zst"
 
     start_web_server "$repo_path" "8000"
 
@@ -171,7 +170,7 @@ build_image() {
 
   cd "$workdir"
   mkdir -pv out
-  ./build.sh -v -V "$(date --iso-8601=minutes --utc)" \
+  mkarchiso -v -w "$workdir" -o out "$workdir" \
     || die "Building image failed, could kernel & zfs-linux be out of sync?"
   mkdir -v -p "$base_path/out"
   cp -v out/*.iso "$base_path/out/"
@@ -181,7 +180,7 @@ start_web_server() {
   local document_root="$1"
   local port="$2"
 
-  pacman -S --noconfirm ruby
+  pacman -S --noconfirm ruby-webrick
   need_cmd ruby
 
   # Start a webserver for override packages and background it. The cleanup

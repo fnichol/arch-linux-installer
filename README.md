@@ -119,8 +119,11 @@ date=2019/12/02
 url="https://archive.archlinux.org/repos/$date/core/os/x86_64"
 ```
 
-$ wget $url/linux{,-headers}-${version}-x86_64.pkg.tar.xz{,.sig}
-$ repo-add override.db.tar.xz *.pkg.tar.xz
+```sh
+for u in $url/linux{,-headers}-${version}.arch1-1-x86_64.pkg.tar.zst{,.sig}; do
+  curl -SfL $u -o $(basename $u)
+done
+repo-add override.db.tar.xz *.pkg.tar.zst
 ```
 
 ## Recovering a System with ArchISO
