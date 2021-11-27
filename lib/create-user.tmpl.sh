@@ -35,8 +35,8 @@ main() {
   version="@@version@@"
   author="Fletcher Nichol <fnichol@nichol.ca>"
 
-  # The name of the root zpool
-  local root_pool="@@root_pool@@"
+  # The name of the base root dataset
+  local base_dataset="@@base_dataset@@"
 
   parse_cli_args "$program" "$version" "$author" "$@"
   local user="$USER"
@@ -59,7 +59,7 @@ main() {
   local passwd="$PASSWD"
   unset PASSWD
 
-  create_user "$user" "$comment" "$passwd" "$root_pool"
+  create_user "$user" "$comment" "$passwd" "$base_dataset"
 }
 
 parse_cli_args() {
@@ -131,8 +131,8 @@ create_user() {
   local user="$1"
   local comment="$2"
   local passwd="$3"
-  local pool="$4"
-  local dataset="$pool/home/$user"
+  local base="$4"
+  local dataset="$base/home/$user"
 
   info "Creating ZFS dataset for '$user'"
   zfs create "$dataset"

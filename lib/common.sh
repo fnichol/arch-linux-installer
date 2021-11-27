@@ -75,7 +75,7 @@ archzfs_repo_block() {
 	# * https://github.com/archzfs/archzfs/wiki
 	#
 	[archzfs]
-	Server = http://archzfs.com/\$repo/\$arch
+	Include = /etc/pacman.d/mirrorlist-archzfs
 	CONTENT
 
   echo "$content"

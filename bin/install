@@ -5,69 +5,84 @@ print_usage() {
   local version="$2"
   local author="$3"
 
-  echo "$program $version
+  cat <<-EOF
+	$program $version
 
-    Arch Linux with ZFS installer.
+	Arch Linux with ZFS installer.
 
-    USAGE:
-        $program [FLAGS] [OPTIONS] <DISK> <NETIF>
+	USAGE:
+	    $program [FLAGS] [OPTIONS] <DISK> <NETIF>
 
-    FLAGS:
-        -e, --encrypt   Encrypts the partition for the zpool (default: no)
-        -h, --help      Prints help information
-        -s, --swap      Include a swap partition (default: no)
-        -V, --version   Prints version information
+	FLAGS:
+	    -e, --encrypt     Encrypts the partition for the zpool
+	                      (default: no)
+	    -h, --help        Prints help information
+	    -I, --hibernation Enables hibernation/resume (WARNING: experimental!)
+	                      (default: no)
+	    -S, --suffix      Appends a unique suffix to zpool names
+	    -V, --version     Prints version information
+	    -W, --no-swap     Do not include a swap partition
+	                      (default: create swap)
 
-    OPTIONS:
-        -b, --boot-part=<PART>      Choose a boot partition for type partition
-                                    (ex: nvme0n1p3)
-        -E, --encrypt-pass=<FILE>   Read the root pool password from file
-                                    (default: prompt)
-        -p, --partition=<TYPE>      Choose a partitioning type (default: whole)
-                                    (values: existing, remaining, whole)
-        -P, --root-pass=<FILE>      Read initial root password from file
-                                    (default: prompt)
-        -r, --root-part=<PART>      Choose a root partition for type partition
-                                    (ex: nvme0n1p4)
-        -S, --swap-part=<PART>      Choose a swap partition for type partition
-                                    (ex: nvme0n1p2)
-        -t, --timezone=<TZ>         Timezone (ex: \`America/Edmonton')
-                                    (default: \`UTC')
-        -W, --swap-pass=<FILE>      Read the swap partition password from file
-                                    (default: prompt)
+	OPTIONS:
+	    -b, --boot-part=<PART>      Choose a boot partition for type partition
+	                                (ex: nvme0n1p3)
+	    -E, --encrypt-pass=<FILE>   Read the root pool password from file
+	                                (default: prompt)
+	    -l, --legacy-part=<PART>    Choose a legacy BIOS boot partition for
+	                                type partition (ex: nvme0n1p5)
+	    -p, --partition=<TYPE>      Choose a partitioning type (default: whole)
+	                                (values: existing, remaining, whole)
+	    -P, --root-pass=<FILE>      Read initial root password from file
+	                                (default: prompt)
+	    -r, --root-part=<PART>      Choose a root partition for type partition
+	                                (ex: nvme0n1p4)
+	    -s, --swap-part=<PART>      Choose a swap partition for type partition
+	                                (ex: nvme0n1p2)
+	    -t, --timezone=<TZ>         Timezone (ex: \`America/Edmonton')
+	                                (default: \`UTC')
+	        --bpool-size=<SIZE>     Size for boot pool partition, using sgdisk
+	                                sizes (default: 4G)
+	        --esp-size=<SIZE>       Size for ESP partition if using whole
+	                                partitioning type, using sgdisk sizes
+	                                (default: 4G)
+	        --rpool-size=<SIZE>     Size for root pool partition, using sgdisk
+	                                sizes (default: empty, uses all remaining)
+	        --swap-size=<SIZE>      Size for swap partition if enabled, using
+	                                sgdisk sizes (default: size of RAM)
 
-    ARGS:
-        <DISK>      The disk to use for installation (ex: \`nvme0n1')
-                    This can be found by using the \`lsblk' program.
-        <NETIF>     The network interface to setup for DHCP (ex: \`ens33')
-                    This can be found by using the \`ip addr' program.
+	ARGS:
+	    <DISK>      The disk to use for installation (ex: \`nvme0n1')
+	                This can be found by using the \`lsblk' program.
+	    <NETIF>     The network interface to setup for DHCP (ex: \`ens33')
+	                This can be found by using the \`ip addr' program.
 
-    EXAMPLES:
-        Example 1 Installing with default behavior
-          The following command installs Arch Linux using the whole disk,
-          without a swap partition, without encryption, and a timezone of
-          \`UTC'.
+	EXAMPLES:
+	    Example 1 Installing with default behavior
+	      The following command installs Arch Linux using the whole disk,
+	      with a swap partition, without encryption, and a timezone of
+	      \`UTC'.
 
-          # $program nvme0n1 ens33
+	      # $program nvme0n1 ens33
 
-        Example 2
-          The following command installs Arch Linux using the whole disk,
-          with a swap partition, with root pool encryption, and a timezone of
-          Mountain time in North America.
+	    Example 2
+	      The following command installs Arch Linux using the whole disk,
+	      without a swap partition, with root pool encryption, and a
+              timezone of Mountain time in North America.
 
-          # $program --encrypt --swap -timezone=America/Edmonton \\
-            nvme0n1 ens33
+	      # $program --encrypt --no-swap -timezone=America/Edmonton \\
+	        nvme0n1 ens33
 
-        Example 3
-          The following command installs Arch Linux using the remaining space
-          on the disk, with a swap partition, without encryption, and a
-          timezone of \`UTC'.
+	    Example 3
+	      The following command installs Arch Linux using the remaining space
+	      on the disk, with a swap partition, without encryption, and a
+	      timezone of \`UTC'.
 
-          # $program --partition=remaining --swap nvme0n1 ens33
+	      # $program --partition=remaining nvme0n1 ens33
 
-    AUTHOR:
-        $author
-    " | sed 's/^ \{1,4\}//g'
+	AUTHOR:
+	    $author
+	EOF
 }
 
 main() {
@@ -101,6 +116,7 @@ main() {
 
   # Parse CLI arguments and set local variables
   parse_cli_args "$program" "$version" "$author" "$@"
+  local inst_id="$INST_ID"
   local disk_name="$DISK"
   local boot_pool="$BOOT_POOL"
   local root_pool="$ROOT_POOL"
@@ -108,14 +124,20 @@ main() {
   local exist_boot_part="${BOOT_PARTITION:-}"
   local exist_root_part="${ROOT_PARTITION:-}"
   local exist_swap_part="${SWAP_PARTITION:-}"
+  local exist_legacy_boot_part="${LEGACY_BOOT_PARTITION:-}"
   local tz="$TZ"
   local encrypt="$ENCRYPT"
   local swap="$SWAP"
-  local root_pool_passwd="${ROOT_POOL_PASSWD:-}"
-  local swap_passwd="${SWAP_PASSWD:-}"
+  local hibernate="$HIBERNATE"
+  local boot_pool_passwd="${BOOT_POOL_PASSWD:-}"
   local root_passwd="$ROOT_PASSWD"
-  unset DISK BOOT_POOL ROOT_POOL PART_TYPE BOOT_PARTITION ROOT_PARTITION \
-    SWAP_PARTITION TZ ENCRYPT SWAP ROOT_POOL_PASSWD SWAP_PASSWD ROOT_PASSWD
+  local boot_pool_size="$BPOOL_SIZE"
+  local esp_size="$ESP_SIZE"
+  local root_pool_size="$RPOOL_SIZE"
+  local swap_size="$SWAP_SIZE"
+  unset INST_ID DISK BOOT_POOL ROOT_POOL PART_TYPE BOOT_PARTITION \
+    ROOT_PARTITION SWAP_PARTITION TZ ENCRYPT SWAP HIBERNATE BOOT_POOL_PASSWD \
+    ROOT_PASSWD BPOOL_SIZE ESP_SIZE RPOOL_SIZE SWAP_SIZE
 
   need_cmd arch-chroot
   need_cmd awk
@@ -125,6 +147,8 @@ main() {
   need_cmd chmod
   need_cmd cp
   need_cmd curl
+  need_cmd cut
+  need_cmd dd
   need_cmd dirname
   need_cmd find
   need_cmd genfstab
@@ -141,6 +165,7 @@ main() {
   need_cmd sgdisk
   need_cmd sort
   need_cmd tail
+  need_cmd tr
   need_cmd udevadm
   need_cmd umount
   need_cmd uname
@@ -156,54 +181,78 @@ main() {
 
   # Partition disk and determine partition devices
   partition_disk "$part_type" "$disk_dev" "$swap" \
-    "$exist_boot_part" "$exist_root_part" "$exist_swap_part"
+    "$esp_size" "$boot_pool_size" "$root_pool_size" "$swap_size" \
+    "$exist_boot_part" "$exist_root_part" "$exist_swap_part" \
+    "$exist_legacy_boot_part"
   local esp_dev="$ESP_DEV"
   local boot_pool_dev="$BOOT_POOL_DEV"
   local root_pool_dev="$ROOT_POOL_DEV"
   local swap_dev="${SWAP_DEV:-}"
-  unset ESP_DEV BOOT_POOL_DEV ROOT_POOL_DEV SWAP_DEV
+  local legacy_boot_dev="$LEGACY_BOOT_DEV"
+  unset ESP_DEV BOOT_POOL_DEV ROOT_POOL_DEV SWAP_DEV LEGACY_BOOT_DEV
 
   # Format partitions, create ZFS zpools, and prepare the pools
   load_zfs
+  setup_encryption_keys "$encrypt" "$root_pool" "$boot_pool" \
+    "$swap" "$hibernate"
+  local tmp_root_pool_key="${TMP_ROOT_POOL_KEY:-}"
+  local tmp_boot_pool_key="${TMP_BOOT_POOL_KEY:-}"
+  local tmp_swap_key="${TMP_SWAP_KEY:-}"
+  unset TMP_ROOT_POOL_KEY TMP_BOOT_POOL_KEY TMP_SWAP_KEY
   format_esp "$part_type" "$esp_dev"
-  encrypt_swap "$swap" "$swap_dev" "$encrypt" "$swap_passwd"
-  local swap_mapper_name="${SWAP_MAPPER_NAME:-}"
-  unset SWAP_MAPPER_NAME
-  format_swap "$swap" "$swap_dev" "$encrypt" "$swap_mapper_name"
-  create_boot_zpool "$boot_pool" "$boot_pool_dev"
-  create_root_zpool "$root_pool" "$root_pool_dev" "$encrypt" "$root_pool_passwd"
-  create_root_datasets "$root_pool"
-  create_boot_datasets "$boot_pool"
-  prepare_pools "$boot_pool" "$root_pool"
-  mount_pools_for_install \
-    "$esp_dev" "$boot_pool" "$root_pool" "$encrypt" "$root_pool_passwd"
+  create_boot_zpool "$boot_pool" "$boot_pool_dev" \
+    "$encrypt" "$boot_pool_passwd" "$tmp_boot_pool_key" "$disk_name"
+  local boot_pool_mapper_name="${BOOT_POOL_MAPPER_NAME:-}"
+  unset BOOT_POOL_MAPPER_NAME
+  create_root_zpool "$root_pool" "$root_pool_dev"
+  create_root_datasets "$root_pool/$inst_id" "$encrypt" "$tmp_root_pool_key"
+  create_boot_datasets "$boot_pool/$inst_id"
+  prepare_pools "$boot_pool" "$root_pool" "$inst_id"
+  mount_pools_for_install "$esp_dev" "$boot_pool" "$root_pool" "$inst_id" \
+    "$encrypt" "$tmp_root_pool_key"
 
   # Install base system
-  gen_fstab "$root_pool" "$swap"
   add_bootstrap_repo_keys
   add_bootstrap_override_repo \
     "$base_path" "$override_repo" "$repo_path_prefix" "$repo_path"
   install_base "$base_path" "$override_repo" "$repo_path_prefix" "$repo_path"
   install_hardware_specific_pkgs
+  ignore_kernel_updates "$base_path"
   setup_zpool_cache "$root_pool"
-  setup_boot_pool_mounting "$boot_pool"
-  set_root_passwd "$root_passwd"
-  enable_services "$boot_pool"
-  install_grub \
-    "$base_path" "$root_pool" "$swap_dev" "$encrypt" "$swap_mapper_name"
+  install_encryption_keys "$encrypt" "$tmp_boot_pool_key" "$tmp_root_pool_key" \
+    "$swap" "$hibernate" "$tmp_swap_key"
+
+  # Swap
+  encrypt_swap "$swap" "$swap_dev" "$encrypt" "$hibernate" \
+    "$disk_dev" "$disk_name" "$tmp_swap_key"
+  local swap_mapper_name="${SWAP_MAPPER_NAME:-}"
+  unset SWAP_MAPPER_NAME
+  format_swap "$swap" "$hibernate" "$swap_dev" "$encrypt" "$swap_mapper_name"
 
   # Initially configure base system
+  set_root_passwd "$root_passwd"
   set_timezone "$tz"
   setup_clock
   generate_locales
+  enable_services "$boot_pool" "$encrypt" "$base_path"
   find_fastest_mirrors
+  generate_hostid
 
   # Prepare user creation script for `root`
-  copy_create_user_script "$base_path" "$version" "$root_pool"
+  copy_create_user_script "$base_path" "$version" \
+    "$root_pool/$inst_id/DATA/default"
+
+  # Prepare bootloader
+  gen_fstab "$esp_dev" "$swap" "$swap_dev" "$encrypt" "$swap_mapper_name"
+  install_grub "$disk_dev" "$inst_id" \
+    "$swap_dev" "$encrypt" "$tmp_swap_key" "$swap_mapper_name" "$hibernate"
+  configure_mkinitcpio "$swap" "$encrypt" "$hibernate"
 
   # Finalize pools and end installer
-  finalize_pools \
-    "$boot_pool" "$root_pool" "$swap" "$swap_dev" "$encrypt" "$swap_mapper_name"
+  snapshot_datasets "$boot_pool/$inst_id" "$root_pool/$inst_id"
+  finalize_pools "$boot_pool" "$root_pool" "$inst_id" \
+    "$swap" "$swap_dev" "$encrypt" "$hibernate" \
+    "$boot_pool_mapper_name" "$swap_mapper_name"
   finish
 }
 
@@ -216,6 +265,8 @@ parse_cli_args() {
   author="$1"
   shift
 
+  # Identifier for the installation of this operating system
+  INST_ID="arch"
   # The name of the boot zpool
   BOOT_POOL="bpool"
   # The name of the root zpool
@@ -226,12 +277,31 @@ parse_cli_args() {
   TZ="UTC"
   # Default to not encrypt the root pool
   ENCRYPT=""
-  # Default to not have a swap partition
-  SWAP=""
+  # Default to have a swap partition
+  SWAP="true"
+  # Default to not support hibernation
+  HIBERNATE=""
+  # Default to not use a unique suffix on zpools
+  SUFFIX=""
+
+  # Default boot pool partition size
+  BPOOL_SIZE="4G"
+  # Default ESP partition size if using whole partitioning
+  ESP_SIZE="4G"
+  # Default root pool partition size
+  RPOOL_SIZE=""
+  # Default swap partition size if swap is enabled. The default corresponds to
+  # the amount of RAM present at install time, plus a small additional buffer
+  # as a margin of error
+  SWAP_SIZE="$(($(
+    vmstat -s -S M \
+      | grep 'total memory$' \
+      | awk '{ print $1 }'
+  ) + 64))M"
 
   OPTIND=1
   # Parse command line flags and options
-  while getopts ":b:eE:p:P:r:sS:t:VW:h-:" opt; do
+  while getopts ":b:eE:Il:p:P:r:s:St:VWh-:" opt; do
     case $opt in
       b)
         BOOT_PARTITION="$OPTARG"
@@ -244,11 +314,17 @@ parse_cli_args() {
           print_usage "$program" "$version" "$author" >&2
           die "pool encrypt password file does not exist: $OPTARG"
         fi
-        ROOT_POOL_PASSWD="$(cat "$OPTARG")"
+        BOOT_POOL_PASSWD="$(cat "$OPTARG")"
         ;;
       h)
         print_usage "$program" "$version" "$author"
         exit 0
+        ;;
+      I)
+        HIBERNATE=true
+        ;;
+      l)
+        LEGACY_BOOT_PARTITION="$OPTARG"
         ;;
       p)
         case "$OPTARG" in
@@ -273,10 +349,10 @@ parse_cli_args() {
         ROOT_PARTITION="$OPTARG"
         ;;
       s)
-        SWAP=true
+        SWAP_PARTITION="$OPTARG"
         ;;
       S)
-        SWAP_PARTITION="$OPTARG"
+        SUFFIX=true
         ;;
       t)
         TZ="$OPTARG"
@@ -286,11 +362,7 @@ parse_cli_args() {
         exit 0
         ;;
       W)
-        if [[ ! -f "$OPTARG" ]]; then
-          print_usage "$program" "$version" "$author" >&2
-          die "swap partition password file does not exist: $OPTARG"
-        fi
-        SWAP_PASSWD="$(cat "$OPTARG")"
+        SWAP=""
         ;;
       -)
         long_optarg="${OPTARG#*=}"
@@ -302,6 +374,13 @@ parse_cli_args() {
             print_usage "$program" "$version" "$author" >&2
             die "missing required argument for --$OPTARG option"
             ;;
+          bpool-size=?*)
+            BPOOL_SIZE="$long_optarg"
+            ;;
+          bpool-size*)
+            print_usage "$program" "$version" "$author" >&2
+            die "missing required argument for --$OPTARG option"
+            ;;
           encrypt)
             ENCRYPT=true
             ;;
@@ -310,15 +389,35 @@ parse_cli_args() {
               print_usage "$program" "$version" "$author" >&2
               die "pool encrypt password file does not exist: $OPTARG"
             fi
-            ROOT_POOL_PASSWD="$(cat "$long_optarg")"
+            BOOT_POOL_PASSWD="$(cat "$long_optarg")"
             ;;
           encrypt-pass*)
+            print_usage "$program" "$version" "$author" >&2
+            die "missing required argument for --$OPTARG option"
+            ;;
+          esp-size=?*)
+            ESP_SIZE="$long_optarg"
+            ;;
+          esp-size*)
             print_usage "$program" "$version" "$author" >&2
             die "missing required argument for --$OPTARG option"
             ;;
           help)
             print_usage "$program" "$version" "$author"
             exit 0
+            ;;
+          hibernation)
+            HIBERNATE=true
+            ;;
+          legacy-part=?*)
+            LEGACY_BOOT_PARTITION="$long_optarg"
+            ;;
+          legacy-part*)
+            print_usage "$program" "$version" "$author" >&2
+            die "missing required argument for --$OPTARG option"
+            ;;
+          no-swap)
+            SWAP=""
             ;;
           partition=?*)
             case "$long_optarg" in
@@ -354,6 +453,16 @@ parse_cli_args() {
             print_usage "$program" "$version" "$author" >&2
             die "missing required argument for --$OPTARG option"
             ;;
+          rpool-size=?*)
+            RPOOL_SIZE="$long_optarg"
+            ;;
+          rpool-size*)
+            print_usage "$program" "$version" "$author" >&2
+            die "missing required argument for --$OPTARG option"
+            ;;
+          suffix)
+            SUFFIX=true
+            ;;
           swap)
             SWAP=true
             ;;
@@ -364,14 +473,10 @@ parse_cli_args() {
             print_usage "$program" "$version" "$author" >&2
             die "missing required argument for --$OPTARG option"
             ;;
-          swap-pass=?*)
-            if [[ ! -f "$OPTARG" ]]; then
-              print_usage "$program" "$version" "$author" >&2
-              die "swap password file does not exist: $OPTARG"
-            fi
-            SWAP_PASSWD="$(cat "$long_optarg")"
+          swap-size=?*)
+            SWAP_SIZE="$long_optarg"
             ;;
-          swap-pass*)
+          swap-size*)
             print_usage "$program" "$version" "$author" >&2
             die "missing required argument for --$OPTARG option"
             ;;
@@ -419,31 +524,42 @@ parse_cli_args() {
   shift
 
   if [[ "$PART_TYPE" == "existing" && -z "${BOOT_PARTITION:-}" ]]; then
-    print_usage >&2
+    print_usage "$program" "$version" "$author" >&2
     die "Boot partition (-b) required when partition type is 'existing'"
   fi
   if [[ "$PART_TYPE" == "existing" && -z "${ROOT_PARTITION:-}" ]]; then
-    print_usage >&2
+    print_usage "$program" "$version" "$author" >&2
     die "Root partition (-r) required when partition type is 'existing'"
   fi
   if [[ "$PART_TYPE" == "existing" && -n "$SWAP" && -z "${SWAP_PARTITION:-}" ]]; then
-    print_usage >&2
+    print_usage "$program" "$version" "$author" >&2
     die "Swap partition (-S) required when partition type is 'existing'"
+  fi
+  if [[ "$PART_TYPE" == "existing" && -z "${LEGACY_BOOT_PARTITION:-}" ]]; then
+    print_usage "$program" "$version" "$author" >&2
+    die "Legacy boot partition (-l) required when partition type is 'existing'"
+  fi
+  if [[ -n "$HIBERNATE" && -z "$SWAP" ]]; then
+    print_usage "$program" "$version" "$author" >&2
+    die "Swap must be enabled to fully support hibernation/resume"
+  fi
+
+  if [[ -n "$SUFFIX" ]]; then
+    local suffix
+    suffix="$(
+      dd if=/dev/urandom bs=1 count=100 2>/dev/null \
+        | tr -dc 'a-z0-9' \
+        | cut -c-6
+    )"
+    BOOT_POOL="${BOOT_POOL}_$suffix"
+    ROOT_POOL="${ROOT_POOL}_$suffix"
   fi
 
   if [[ -n "${ENCRYPT:-}" ]]; then
-    if [[ -z "${ROOT_POOL_PASSWD:-}" ]]; then
-      read_passwd "$ROOT_POOL encryption"
-      ROOT_POOL_PASSWD="$PASSWD"
+    if [[ -z "${BOOT_POOL_PASSWD:-}" ]]; then
+      read_passwd "$BOOT_POOL encryption"
+      BOOT_POOL_PASSWD="$PASSWD"
       unset PASSWD
-    fi
-
-    if [[ -n "${SWAP:-}" ]]; then
-      if [[ -z "${SWAP_PASSWD:-}" ]]; then
-        read_passwd "swap partition encryption"
-        SWAP_PASSWD="$PASSWD"
-        unset PASSWD
-      fi
     fi
   fi
 
@@ -455,12 +571,61 @@ parse_cli_args() {
 }
 
 in_chroot() {
-  arch-chroot /mnt /bin/bash -c "$*"
+  if [[ -n "${1:-}" ]]; then
+    arch-chroot /mnt /bin/bash -c "$@"
+  else
+    arch-chroot /mnt /bin/bash
+  fi
 }
 
 load_zfs() {
-  info "Loading the ZFS kernel module"
+  section "Loading the ZFS kernel module"
   modprobe zfs
+}
+
+# Generates encryption keys for the root and boot pools.
+#
+# # Side Effects
+#
+# This function set up the following global variables:
+#
+# * `TMP_ROOT_POOL_KEY`: location of the the root pool key, stored temporarily
+# * `TMP_BOOT_POOL_KEY`: location of the the boot pool key, stored temporarily
+#
+# If a swap partition was enabled with hibernation, then the following global
+# variables are also set:
+#
+# * `TMP_SWAP_KEY`: location of the the swap key, stored temporarily, if swap
+#   is enabled
+setup_encryption_keys() {
+  local encrypt="$1"
+
+  if [[ -z "$encrypt" ]]; then
+    return 0
+  fi
+
+  local root_pool="$2"
+  local boot_pool="$3"
+  local swap="$4"
+  local hibernate="$5"
+
+  TMP_ROOT_POOL_KEY="/tmp/etc/cryptkey.d/$root_pool-key-zfs"
+  TMP_BOOT_POOL_KEY="/tmp/etc/cryptkey.d/$boot_pool-key-luks"
+
+  section "Creating encryption keys"
+
+  mkdir -p /tmp/etc/cryptkey.d
+  chmod 0700 /tmp/etc/cryptkey.d
+  info "Generating root pool key '$TMP_ROOT_POOL_KEY'"
+  dd bs=32 count=1 if=/dev/urandom of="$TMP_ROOT_POOL_KEY"
+  info "Generating boot pool key '$TMP_BOOT_POOL_KEY'"
+  dd bs=32 count=1 if=/dev/urandom of="$TMP_BOOT_POOL_KEY"
+  if [[ -n "$swap" && -n "$hibernate" ]]; then
+    TMP_SWAP_KEY="/tmp/etc/cryptkey.d/swap-key-luks"
+    info "Generating swap key '$TMP_SWAP_KEY'"
+    dd bs=32 count=1 if=/dev/urandom of="$TMP_SWAP_KEY"
+  fi
+  chmod u=r,go= /tmp/etc/cryptkey.d/*
 }
 
 partition_disk() {
@@ -470,24 +635,34 @@ partition_disk() {
   shift
   local swap="$1"
   shift
+  local esp_size="$1"
+  shift
+  local boot_pool_size="$1"
+  shift
+  local root_pool_size="$1"
+  shift
+  local swap_size="$1"
+  shift
 
   case "$part_type" in
     existing)
       local boot_pool_dev="$1"
       local root_pool_dev="$2"
       local swap_dev="$3"
+      local legacy_boot_dev="$4"
 
-      partition_existing_disk \
-        "$disk_dev" "$swap" "$boot_pool_dev" "$root_pool_dev" "$swap_dev"
+      partition_existing_disk "$disk_dev" "$swap" \
+        "$boot_pool_dev" "$root_pool_dev" "$swap_dev" "$legacy_boot_dev"
       ;;
     remaining)
-      partition_remaining_disk "$disk_dev" "$swap"
+      partition_remaining_disk "$disk_dev" "$swap" \
+        "$esp_size" "$boot_pool_size" "$root_pool_size" "$swap_size"
       ;;
     whole)
-      partition_whole_disk "$disk_dev" "$swap"
+      partition_whole_disk "$disk_dev" "$swap" \
+        "$esp_size" "$boot_pool_size" "$root_pool_size" "$swap_size"
       ;;
     *)
-      print_usage
       die "Invalid partition type: $part_type"
       ;;
   esac
@@ -502,6 +677,7 @@ partition_disk() {
 # * `ESP_DEV`: ESP partition device
 # * `BOOT_POOL_DEV`: boot pool partition device
 # * `ROOT_POOL_DEV`: root pool partition device
+# * `LEGACY_BOOT_DEV`: legacy boot partition device
 #
 # If a swap partition was enabled, then the following global variables are also
 # set:
@@ -513,17 +689,13 @@ partition_existing_disk() {
   local boot_pool_dev_name="$3"
   local root_pool_dev_name="$4"
   local swap_dev_name="$5"
+  local legacy_boot_dev_name="$6"
+
+  section "Partitioning using existing disk '$disk_dev'"
 
   find_esp_dev "$disk_dev"
   ESP_DEV="$FIND_ESP_DEV"
   unset FIND_ESP_DEV
-
-  if [[ -n "$swap" ]]; then
-    find_dev "$swap_dev_name"
-    SWAP_DEV="$FIND_DEV"
-    unset FIND_DEV
-    info "Using existing swap partition '$SWAP_DEV'"
-  fi
 
   find_dev "$boot_pool_dev_name"
   BOOT_POOL_DEV="$FIND_DEV"
@@ -534,6 +706,18 @@ partition_existing_disk() {
   ROOT_POOL_DEV="$FIND_DEV"
   unset FIND_DEV
   info "Using existing root pool partition '$ROOT_POOL_DEV'"
+
+  if [[ -n "$swap" ]]; then
+    find_dev "$swap_dev_name"
+    SWAP_DEV="$FIND_DEV"
+    unset FIND_DEV
+    info "Using existing swap partition '$SWAP_DEV'"
+  fi
+
+  find_dev "$legacy_boot_dev_name"
+  LEGACY_BOOT_DEV="$FIND_DEV"
+  unset FIND_DEV
+  info "Using existing legacy BIOS pool partition '$LEGACY_BOOT_DEV'"
 }
 
 # Partitions remaining space on an existing disk and sets variables for
@@ -546,6 +730,7 @@ partition_existing_disk() {
 # * `ESP_DEV`: ESP partition device
 # * `BOOT_POOL_DEV`: boot pool partition device
 # * `ROOT_POOL_DEV`: root pool partition device
+# * `LEGACY_BOOT_DEV`: legacy boot partition device
 #
 # If a swap partition was enabled, then the following global variables are also
 # set:
@@ -554,8 +739,12 @@ partition_existing_disk() {
 partition_remaining_disk() {
   local disk_dev="$1"
   local swap="$2"
+  local esp_size="$3"
+  local boot_pool_size="$4"
+  local root_pool_size="$5"
+  local swap_size="$6"
 
-  info "Partitioning remaining space on disk '$disk_dev'"
+  section "Partitioning using remaining space on disk '$disk_dev'"
 
   find_esp_dev "$disk_dev"
   ESP_DEV="$FIND_ESP_DEV"
@@ -563,20 +752,23 @@ partition_remaining_disk() {
 
   local part boot_pool_part root_pool_part
   part="$(sgdisk --print "$disk_dev" | tail -n 1 | awk '{ print $1 }')"
-  if [[ -n "$swap" ]]; then
-    part=$((part + 1))
-    local swap_part="$part"
-  fi
   part=$((part + 1))
   boot_pool_part="$part"
   part=$((part + 1))
   root_pool_part="$part"
-
+  part=$((part + 1))
   if [[ -n "$swap" ]]; then
-    partition_swap "$disk_dev" "$swap_part"
+    local swap_part="$part"
   fi
-  partition_boot_pool "$disk_dev" "$boot_pool_part"
-  partition_root_pool "$disk_dev" "$root_pool_part"
+  part=$((part + 1))
+  local legacy_boot_part="$part"
+
+  partition_boot_pool "$disk_dev" "$boot_pool_part" "$boot_pool_size"
+  partition_root_pool "$disk_dev" "$root_pool_part" "$root_pool_size"
+  if [[ -n "$swap" ]]; then
+    partition_swap "$disk_dev" "$swap_part" "$swap_size"
+  fi
+  partition_legacy_boot "$disk_dev" "$legacy_boot_part"
 }
 
 # Partitions entire disk and sets variables for partition devices.
@@ -588,6 +780,7 @@ partition_remaining_disk() {
 # * `ESP_DEV`: ESP partition device
 # * `BOOT_POOL_DEV`: boot pool partition device
 # * `ROOT_POOL_DEV`: root pool partition device
+# * `LEGACY_BOOT_DEV`: legacy boot partition device
 #
 # If a swap partition was enabled, then the following global variables are also
 # set:
@@ -596,30 +789,37 @@ partition_remaining_disk() {
 partition_whole_disk() {
   local disk_dev="$1"
   local swap="$2"
+  local esp_size="$3"
+  local boot_pool_size="$4"
+  local root_pool_size="$5"
+  local swap_size="$6"
 
   local part=0
   part=$((part + 1))
   local esp_part="$part"
-  if [[ -n "$swap" ]]; then
-    part=$((part + 1))
-    local swap_part="$part"
-  fi
   part=$((part + 1))
   local boot_pool_part="$part"
   part=$((part + 1))
   local root_pool_part="$part"
+  part=$((part + 1))
+  if [[ -n "$swap" ]]; then
+    local swap_part="$part"
+  fi
+  part=$((part + 1))
+  local legacy_boot_part="$part"
 
-  info "Partitioning whole disk '$disk_dev'"
+  section "Partitioning using the whole disk '$disk_dev'"
 
   info "Clearing partition table on '$disk_dev'"
   sgdisk --zap-all "$disk_dev"
 
-  partition_esp "$disk_dev" "$esp_part"
+  partition_esp "$disk_dev" "$esp_part" "$esp_size"
+  partition_boot_pool "$disk_dev" "$boot_pool_part" "$boot_pool_size"
   if [[ -n "$swap" ]]; then
-    partition_swap "$disk_dev" "$swap_part"
+    partition_swap "$disk_dev" "$swap_part" "$swap_size"
   fi
-  partition_boot_pool "$disk_dev" "$boot_pool_part"
-  partition_root_pool "$disk_dev" "$root_pool_part"
+  partition_root_pool "$disk_dev" "$root_pool_part" "$root_pool_size"
+  partition_legacy_boot "$disk_dev" "$legacy_boot_part"
 }
 
 # Creates a partition for the ESP on a given disk and sets a global
@@ -633,11 +833,12 @@ partition_whole_disk() {
 partition_esp() {
   local disk_dev="$1"
   local part="$2"
+  local esp_size="$3"
 
   ESP_DEV="${disk_dev}-part${part}"
-  info "Creating ESP partition for UEFI booting '$ESP_DEV'"
+  info "Creating ESP partition for UEFI booting '$ESP_DEV' of size '$esp_size'"
   sgdisk \
-    --new="$part:1M:+512M" \
+    --new="$part:1M:+$esp_size" \
     --typecode="$part:EF00" \
     "$disk_dev"
   wait_on_part_dev "$ESP_DEV"
@@ -653,14 +854,12 @@ partition_esp() {
 partition_swap() {
   local disk_dev="$1"
   local part="$2"
-
-  local ram_mb
-  ram_mb="$(vmstat -s -S M | grep 'total memory$' | awk '{ print $1 }')"
+  local swap_size="$3"
 
   SWAP_DEV="${disk_dev}-part${part}"
-  info "Creating swap partition '$SWAP_DEV'"
+  info "Creating swap partition '$SWAP_DEV' of size '$swap_size'"
   sgdisk \
-    --new="$part:0:+${ram_mb}M" \
+    --new="$part:0:+$swap_size" \
     --typecode="$part:8200" \
     "$disk_dev"
   wait_on_part_dev "$SWAP_DEV"
@@ -677,12 +876,13 @@ partition_swap() {
 partition_boot_pool() {
   local disk_dev="$1"
   local part="$2"
+  local boot_pool_size="$3"
 
   BOOT_POOL_DEV="${disk_dev}-part${part}"
-  info "Creating boot pool partition '$BOOT_POOL_DEV'"
+  info "Creating boot pool partition '$BOOT_POOL_DEV' of size '$boot_pool_size'"
   sgdisk \
-    --new="$part:0:+1G" \
-    --typecode="$part:BF01" \
+    --new="$part:0:+$boot_pool_size" \
+    --typecode="$part:BE00" \
     "$disk_dev"
   wait_on_part_dev "$BOOT_POOL_DEV"
 }
@@ -698,14 +898,43 @@ partition_boot_pool() {
 partition_root_pool() {
   local disk_dev="$1"
   local part="$2"
+  local root_pool_size="$3"
 
   ROOT_POOL_DEV="${disk_dev}-part${part}"
-  info "Creating root pool partition '$ROOT_POOL_DEV'"
+  info "Creating root pool partition '$ROOT_POOL_DEV' of size '${3:-*}'"
+  local sgdisk_size
+  if [[ -z "$root_pool_size" ]]; then
+    sgdisk_size="0"
+  else
+    sgdisk_size="+$root_pool_size"
+  fi
   sgdisk \
-    --new="$part:0:0" \
-    --typecode="$part:BF01" \
+    --new="$part:0:$sgdisk_size" \
+    --typecode="$part:BF00" \
     "$disk_dev"
   wait_on_part_dev "$ROOT_POOL_DEV"
+}
+
+# Creates a partition for legacy BIOS booting on a given disk and sets a global
+# variable.
+#
+# # Side Effects
+#
+# This function sets the following global variables:
+#
+# * `LEGACY_BOOT_DEV`: legacy BIOS boot partition device
+partition_legacy_boot() {
+  local disk_dev="$1"
+  local part="$2"
+
+  LEGACY_BOOT_DEV="${disk_dev}-part${part}"
+  info "Creating legacy BIOS boot partition '$LEGACY_BOOT_DEV'"
+  sgdisk \
+    --set-alignment=1 \
+    --new="$part:24k:+1000K" \
+    --typecode="$part:EF02" \
+    "$disk_dev"
+  wait_on_part_dev "$BOOT_POOL_DEV"
 }
 
 # Finds the given device name under the `/dev/disk/by-id` tree and sets a
@@ -719,6 +948,8 @@ partition_root_pool() {
 find_dev() {
   local device_name="$1"
   local retries=0
+
+  section "Resolving device by disk id for '/dev/$device_name'"
 
   udevadm trigger
   udevadm settle
@@ -784,8 +1015,8 @@ format_esp() {
   local esp_dev="$2"
 
   if [[ "$part_type" == "whole" ]]; then
-    info "Formatting EFI System Partition (ESP) filesystem on '$esp_dev'"
-    mkfs.fat -F32 "$esp_dev"
+    section "Formatting EFI System Partition (ESP) filesystem on '$esp_dev'"
+    mkfs.vfat -n EFI "$esp_dev"
   fi
 }
 
@@ -793,49 +1024,155 @@ encrypt_swap() {
   local swap="$1"
   local swap_dev="$2"
   local encrypt="$3"
-  local swap_passwd="$4"
+  local hibernate="$4"
 
   if [[ -n "$swap" && -n "$encrypt" ]]; then
-    info "Creating encrypted partition for swap on '$swap_dev'"
-    echo -n "$swap_passwd" | cryptsetup luksFormat \
-      --cipher aes-xts-plain64 \
-      --hash sha512 \
-      --key-file - \
-      "$swap_dev"
+    local disk_dev="$5"
+    local disk_name="$6"
 
-    SWAP_MAPPER_NAME="crypt-swap"
-    info \
-      "Opening encrypted partition for swap on '/dev/mapper/$SWAP_MAPPER_NAME'"
-    echo -n "$swap_passwd" \
-      | cryptsetup open --type luks "$swap_dev" "$SWAP_MAPPER_NAME"
+    local disk_guid partnum swap_mapper_name
+    disk_guid="$(
+      sgdisk --print "$disk_dev" \
+        | grep '^Disk identifier' \
+        | awk '{ print $NF }'
+    )"
+    partnum="$(echo "$swap_dev" | awk -F- '{ print $NF }')"
+    swap_mapper_name="$disk_name-$disk_guid-$partnum-luks-swap"
+
+    if [[ -n "$hibernate" ]]; then
+      # Persistent swap needed for hibernation/resuming
+      local tmp_swap_key="$7"
+      section "Creating encrypted swap partition '$swap_dev'"
+      cryptsetup luksFormat \
+        --batch-mode \
+        --type luks2 \
+        --key-file "$tmp_swap_key" \
+        "$swap_dev"
+
+      info "Opening LUKS container '$swap_dev' as '$swap_mapper_name'"
+      cryptsetup open "$swap_dev" "$swap_mapper_name" --key-file "$tmp_swap_key"
+    else
+      # Otherwise, a new encrypted swap with a random key will be re-created on
+      # each boot
+      section "Configuring an ephemeral encrypted swap on '$swap_mapper_name'"
+      local opts
+      opts="swap,cipher=aes-cbc-essiv:sha256,size=256,discard"
+      echo "$swap_mapper_name $swap_dev /dev/urandom $opts" >>/mnt/etc/crypttab
+    fi
+
+    SWAP_MAPPER_NAME="$swap_mapper_name"
   fi
 }
 
 format_swap() {
   local swap="$1"
-  local swap_dev="$2"
-  local encrypt="$3"
-  local swap_mapper_name="$4"
+  local hibernate="$2"
 
-  if [[ -n "$swap" ]]; then
-    local device
-    if [[ -n "$encrypt" ]]; then
-      device="/dev/mapper/$swap_mapper_name"
-    else
-      device="$swap_dev"
-    fi
-
-    info "Setting up a Linux swap area on '$device'"
-    mkswap "$device"
-    swapon "$device"
+  if [[ -z "$swap" || -n "$hibernate" ]]; then
+    return
   fi
+
+  local swap_dev="$3"
+  local encrypt="$4"
+  local swap_mapper_name="$5"
+
+  local device
+  if [[ -n "$encrypt" ]]; then
+    device="/dev/mapper/$swap_mapper_name"
+  else
+    device="$swap_dev"
+  fi
+
+  section "Creating swap filesystem on '$device'"
+  mkswap "$device"
 }
 
+# Creates the boot zpool.
+#
+# # Side Effects
+#
+# If a encyption was enabled, then the following global variable is set:
+#
+# * `BOOT_POOL_MAPPER_NAME`: encrypted boot pool partition mapper device
 create_boot_zpool() {
   local boot_pool="$1"
   local boot_pool_dev="$2"
+  local encrypt="$3"
+  local boot_pool_passwd="$4"
+  local tmp_boot_pool_key="$5"
+  local disk_name="$6"
+  local pool_dev
 
-  info "Creating the boot zpool '$boot_pool' on '$boot_pool_dev'"
+  section "Creating boot zpool"
+
+  if [[ -n "$encrypt" ]]; then
+    local disk_guid partnum boot_pool_mapper_name iters
+    disk_guid="$(
+      sgdisk --print "$disk_dev" \
+        | grep '^Disk identifier' \
+        | awk '{ print $NF }'
+    )"
+    partnum="$(echo "$boot_pool_dev" | awk -F- '{ print $NF }')"
+    boot_pool_mapper_name="$disk_name-$disk_guid-$partnum-luks-$boot_pool"
+
+    info "Formatting and encrypting a boot pool device '$boot_pool_mapper_name'"
+    # Format the partition, use the password to set slot 0
+    echo "$boot_pool_passwd" \
+      | cryptsetup luksFormat \
+        --batch-mode \
+        --type luks1 \
+        "$boot_pool_dev"
+
+    # Determine the interations and lower this number to something like 5% to
+    # make decrypting faster--warning this also makes brute force attacking of
+    # this password 20x faster!
+    iters="$(
+      cryptsetup luksDump /dev/nvme0n1p2 \
+        | grep Iterations: \
+        | head -n 1 \
+        | awk '{ print ($NF * 0.05) }'
+    )"
+
+    # Add the key file into slot 2, using the lower iterations value--this
+    # leaves slot 1 open for an admin user password, yubi key, etc.
+    echo "$boot_pool_passwd" \
+      | cryptsetup luksAddKey \
+        --pbkdf-force-iterations "$iters" \
+        --key-slot 2 \
+        "$boot_pool_dev" \
+        "$tmp_boot_pool_key"
+
+    # Remove the password in slot 0
+    echo "$boot_pool_passwd" \
+      | cryptsetup luksRemoveKey \
+        "$boot_pool_dev"
+    # Re-add the password into slot 0, but this time with the lower iterations
+    # value
+    echo "$boot_pool_passwd" \
+      | cryptsetup luksAddKey \
+        --pbkdf-force-iterations "$iters" \
+        --key-file "$tmp_boot_pool_key" \
+        "$boot_pool_dev"
+
+    # Finally, open the encrypted mapper
+    cryptsetup open \
+      "$boot_pool_dev" \
+      "$boot_pool_mapper_name" \
+      --key-file "$tmp_boot_pool_key"
+
+    local crypttab_key opts
+    crypttab_key="/etc/cryptkey.d/$(basename "$tmp_boot_pool_key")"
+    opts="luks,discard,key-slot=2"
+    echo "$boot_pool_mapper_name $boot_pool_dev $crypttab_key $opts" \
+      >>/tmp/etc/crypttab
+
+    BOOT_POOL_MAPPER_NAME="$boot_pool_mapper_name"
+    pool_dev="/dev/mapper/$boot_pool_mapper_name"
+  else
+    pool_dev="$boot_pool_dev"
+  fi
+
+  info "Creating the boot zpool '$boot_pool' on '$pool_dev'"
   # GRUB does not support all of the zpool features. See spa_feature_names in
   # grub-core/fs/zfs/zfs.c. This step creates a separate boot pool for /boot
   # with the features limited to only those that GRUB supports, allowing the
@@ -843,41 +1180,26 @@ create_boot_zpool() {
   # so all read-only compatible features are "supported" by GRUB.
   #
   # References:
+  # * https://openzfs.github.io/openzfs-docs/Getting%20Started/Arch%20Linux/Root%20on%20ZFS/2-system-installation.html
+  # * https://github.com/openzfs/zfs/blob/master/cmd/zpool/compatibility.d/grub2
   # * http://git.savannah.gnu.org/cgit/grub.git/tree/grub-core/fs/zfs/zfs.c#n276
   # * https://github.com/zfsonlinux/zfs/wiki/Debian-Buster-Root-on-ZFS
   # * https://wiki.archlinux.org/index.php/ZFS#GRUB-compatible_pool_creation
   zpool create \
-    -m none \
     -R /mnt \
+    -o compatibility=grub2 \
     -o ashift=12 \
-    -d \
-    -o feature@allocation_classes=enabled \
-    -o feature@async_destroy=enabled \
-    -o feature@bookmarks=enabled \
-    -o feature@embedded_data=enabled \
-    -o feature@empty_bpobj=enabled \
-    -o feature@enabled_txg=enabled \
-    -o feature@extensible_dataset=enabled \
-    -o feature@filesystem_limits=enabled \
-    -o feature@hole_birth=enabled \
-    -o feature@large_blocks=enabled \
-    -o feature@lz4_compress=enabled \
-    -o feature@project_quota=enabled \
-    -o feature@resilver_defer=enabled \
-    -o feature@spacemap_histogram=enabled \
-    -o feature@spacemap_v2=enabled \
-    -o feature@userobj_accounting=enabled \
-    -o feature@zpool_checkpoint=enabled \
+    -o autotrim=on \
     -O acltype=posixacl \
     -O canmount=off \
     -O compression=lz4 \
     -O devices=off \
-    -O mountpoint=none \
     -O normalization=formD \
     -O relatime=on \
     -O xattr=sa \
+    -O mountpoint=/boot \
     "$boot_pool" \
-    "$boot_pool_dev"
+    "$pool_dev"
 
   if ! zpool list "$boot_pool" >/dev/null 2>&1; then
     die "Boot zpool '$boot_pool' failed to create, see error above"
@@ -887,113 +1209,139 @@ create_boot_zpool() {
 create_root_zpool() {
   local root_pool="$1"
   local root_pool_dev="$2"
-  local encrypted="$3"
 
-  if [[ -n "$encrypted" ]]; then
-    local root_pool_passwd="$4"
+  section "Creating the root zpool '$root_pool' on '$root_pool_dev'"
 
-    info "Creating the encrypted root zpool '$root_pool' on '$root_pool_dev'"
-    zpool create \
-      -m none \
-      -R /mnt \
-      -o ashift=12 \
-      -O acltype=posixacl \
-      -O canmount=off \
-      -O compression=lz4 \
-      -O dnodesize=auto \
-      -O encryption=aes-256-gcm \
-      -O keyformat=passphrase \
-      -O keylocation=prompt \
-      -O mountpoint=/ \
-      -O normalization=formD \
-      -O relatime=on \
-      -O xattr=sa \
-      "$root_pool" \
-      "$root_pool_dev" \
-      <<<"$root_pool_passwd"
+  zpool create \
+    -R /mnt \
+    -o ashift=12 \
+    -o autotrim=on \
+    -O acltype=posixacl \
+    -O canmount=off \
+    -O compression=zstd \
+    -O dnodesize=auto \
+    -O normalization=formD \
+    -O relatime=on \
+    -O xattr=sa \
+    -O mountpoint=/ \
+    "$root_pool" \
+    "$root_pool_dev"
 
-    if ! zpool list "$root_pool" >/dev/null 2>&1; then
-      die "Root zpool '$root_pool' failed to create, is the password too short?"
-    fi
-  else
-    info "Creating the root zpool '$root_pool' on '$root_pool_dev'"
-    zpool create \
-      -m none \
-      -R /mnt \
-      -o ashift=12 \
-      -O acltype=posixacl \
-      -O canmount=off \
-      -O compression=lz4 \
-      -O dnodesize=auto \
-      -O mountpoint=/ \
-      -O normalization=formD \
-      -O relatime=on \
-      -O xattr=sa \
-      "$root_pool" \
-      "$root_pool_dev"
-
-    if ! zpool list "$root_pool" >/dev/null 2>&1; then
-      die "Root zpool '$root_pool' failed to create, see error above"
-    fi
+  if ! zpool list "$root_pool" >/dev/null 2>&1; then
+    die "Root zpool '$root_pool' failed to create, see error above"
   fi
 }
 
-create_root_datasets() {
-  local pool="$1"
+create_boot_datasets() {
+  local base="$1"
 
-  zfs create -o canmount=off -o mountpoint=none "$pool/ROOT"
-  zfs create -o canmount=noauto -o mountpoint=/ "$pool/ROOT/default"
-  zfs mount "$pool/ROOT/default"
+  section "Creating boot zpool datasets"
 
-  zfs create "$pool/home"
-  zfs create -o mountpoint=/root "$pool/home/root"
+  info "Creating zfs dataset '$base'"
+  zfs create -o canmount=off -o mountpoint=none "$base"
 
-  zfs create "$pool/opt"
+  if ! zfs list "$base" >/dev/null 2>&1; then
+    die "ZFS dataset '$base' failed to create, see error above"
+  fi
 
-  zfs create -o canmount=off "$pool/usr"
-  zfs create "$pool/usr/local"
+  info "Creating '$base' base system datasets"
+  zfs create -o canmount=off -o mountpoint=none "$base/BOOT"
+  zfs create -o canmount=noauto -o mountpoint=/boot "$base/BOOT/default"
 
-  zfs create -o canmount=off "$pool/var"
-  zfs create -o com.sun:auto-snapshot=false "$pool/var/cache"
-  zfs create "$pool/var/cache/pacman"
-  zfs create -o canmount=off "$pool/var/lib"
-  zfs create -o com.sun:auto-snapshot=false "$pool/var/lib/docker"
-  zfs create -o canmount=off "$pool/var/lib/systemd"
-  zfs create "$pool/var/lib/systemd/coredump"
-  zfs create "$pool/var/log"
-  zfs create "$pool/var/log/journal"
-  zfs create "$pool/var/spool"
-  zfs create -o com.sun:auto-snapshot=false "$pool/var/tmp"
-
-  chmod 1777 /mnt/var/tmp
+  zfs mount "$base/BOOT/default"
 }
 
-create_boot_datasets() {
-  local pool="$1"
+create_root_datasets() {
+  local base="$1"
+  local encrypted="$2"
 
-  zfs create -o canmount=off -o mountpoint=none "$pool/BOOT"
-  zfs create -o canmount=noauto -o mountpoint=/boot "$pool/BOOT/default"
-  zfs mount "$pool/BOOT/default"
+  section "Creating root zpool datasets"
+
+  if [[ -n "$encrypted" ]]; then
+    local tmp_root_pool_key="$3"
+
+    info "Creating encrypted zfs dataset '$base'"
+    zfs create \
+      -o canmount=off \
+      -o mountpoint=none \
+      -o encryption=on \
+      -o keyformat=raw \
+      -o "keylocation=file://$tmp_root_pool_key" \
+      "$base"
+    # Set the permanent value for keylocation now that the data has been
+    # created and encrypted
+    zfs set \
+      "keylocation=file:///etc/cryptkey.d/$(basename "$tmp_root_pool_key")" \
+      "$base"
+
+    if ! zfs list "$base" >/dev/null 2>&1; then
+      die "ZFS dataset '$base' failed to create, is the password too short?"
+    fi
+  else
+    info "Creating zfs dataset '$base'"
+    zfs create -o canmount=off -o mountpoint=none "$base"
+
+    if ! zfs list "$base" >/dev/null 2>&1; then
+      die "ZFS dataset '$base' failed to create, see error above"
+    fi
+  fi
+
+  info "Creating '$base' base system datasets"
+  zfs create -o canmount=off -o mountpoint=none "$base/ROOT"
+  # Data datasets would be omitted when performing an upgrade rollback
+  zfs create -o canmount=off -o mountpoint=none "$base/DATA"
+
+  zfs create -o canmount=noauto -o mountpoint=/ "$base/ROOT/default"
+  zfs create -o canmount=off -o mountpoint=/ "$base/DATA/default"
+
+  zfs mount "$base/ROOT/default"
+
+  local d dataset
+
+  for d in usr var var/lib var/lib/systemd; do
+    dataset="$base/DATA/default/$d"
+    info "Creating DATA dataset '$dataset'"
+    zfs create -o canmount=off "$dataset"
+  done
+
+  for d in var/cache var/tmp; do
+    dataset="$base/DATA/default/$d"
+    info "Creating DATA dataset '$dataset'"
+    zfs create -o com.sun:auto-snapshot=false "$dataset"
+  done
+
+  for d in \
+    home srv usr/local var/log var/spool \
+    opt var/cache/pacman var/log/journal var/lib/AccountService \
+    var/lib/systemd/coredump \
+    var/lib/docker var/lib/lxc var/lib/libvirt; do
+
+    dataset="$base/DATA/default/$d"
+    info "Creating DATA dataset '$dataset'"
+    zfs create -o canmount=on "$dataset"
+  done
+
+  dataset="$base/DATA/default/home/root"
+  info "Creating DATA dataset '$dataset'"
+  zfs create -o canmount=on -o mountpoint=/root "$dataset"
+
+  info "Setting permission on /var/tmp"
+  chmod 1777 /mnt/var/tmp
+  info "Setting permission on /root"
+  chmod 750 /mnt/root
 }
 
 prepare_pools() {
   local boot_pool="$1"
   local root_pool="$2"
+  local inst_id="$3"
+
+  section "Preparing zpools"
 
   info "Unmounting all ZFS datasets"
   zfs unmount -a
-  zfs unmount "$boot_pool/BOOT/default"
-  zfs unmount "$root_pool/ROOT/default"
-
-  info "Writing out initial /etc/fstab"
-  cat <<-EOF >/etc/fstab
-	$root_pool/ROOT/default	/	zfs	defaults,noatime	0 0
-	EOF
-
-  info "Setting bootfs property on $boot_pool/ROOT/default"
-  # Set the bootfs property on the descendant boot filesystem so the boot
-  # loader knows where to find the operating system.
-  zpool set bootfs="$boot_pool/BOOT/default" "$boot_pool"
+  zfs unmount "$boot_pool/$inst_id/BOOT/default"
+  zfs unmount "$root_pool/$inst_id/ROOT/default"
 
   info "Exporting the pools"
   zpool export "$boot_pool"
@@ -1004,22 +1352,25 @@ mount_pools_for_install() {
   local esp_dev="$1"
   local boot_pool="$2"
   local root_pool="$3"
-  local encrypted="$4"
+  local inst_id="$4"
+  local encrypted="$5"
+
+  section "Mounting zpools for system installation and configuration"
 
   info "Re-importing the pools"
   zpool import -N -d /dev/disk/by-id -R /mnt "$root_pool"
   zpool import -N -d /dev/disk/by-id -R /mnt "$boot_pool"
 
   if [[ -n "$encrypted" ]]; then
-    local root_pool_passwd="$5"
+    local tmp_root_pool_key="$6"
 
-    info "Decrypting root pool '$root_pool'"
-    zfs load-key "$root_pool" <<<"$root_pool_passwd"
+    info "Decrypting root pool dataset '$root_pool/$inst_id'"
+    zfs load-key -L "file://$tmp_root_pool_key" "$root_pool/$inst_id"
   fi
 
   info "Re-mounting datasets"
-  zfs mount "$root_pool/ROOT/default"
-  zfs mount "$boot_pool/BOOT/default"
+  zfs mount "$root_pool/$inst_id/ROOT/default"
+  zfs mount "$boot_pool/$inst_id/BOOT/default"
   zfs mount -a
 
   info "Mounting the EFI System Partition (ESP) device $esp_dev"
@@ -1028,21 +1379,49 @@ mount_pools_for_install() {
 }
 
 gen_fstab() {
-  local root_pool="$1"
+  local esp_dev="$1"
   local swap="$2"
 
-  info "Using genfstab to generate system /etc/fstab"
-  mkdir -pv /mnt/etc
-  genfstab -U -p /mnt | grep -E "^$root_pool/ROOT/default" >/mnt/etc/fstab
+  section "Generating /etc/fstab"
+
+  # info "Using genfstab to generate system /etc/fstab"
+  # mkdir -pv /mnt/etc
+  # genfstab -U /mnt \
+  #   | sed 's;zfs[[:space:]]*;zfs zfsutil,;g' \
+  #   | grep 'zfs zfsutil' \
+  #     >>/mnt/etc/fstab
+
+  local esp_uuid esp_mntops
+  esp_uuid="$(blkid -s UUID -o value "$esp_dev")"
+
+  esp_mntops="x-systemd.idle-timeout=1min,x-systemd.automount,noauto"
+  esp_mntops="$esp_mntops,umask=0022,fmask=0022,dmask=0022"
+
+  info "Adding entry for ESP (/boot) mount"
+  echo "UUID=$esp_uuid /boot/efi vfat $esp_mntops 0 1" >>/mnt/etc/fstab
+
   if [[ -n "$swap" ]]; then
-    genfstab -U -p /mnt | awk '$3 == "swap" { print $0 }' >>/mnt/etc/fstab
+    local swap_dev="$3"
+    local encrypt="$4"
+
+    if [[ -n "$encrypt" ]]; then
+      local swap_mapper_name="$5"
+
+      info "Adding entry for encrypted swap"
+      echo "/dev/mapper/$swap_mapper_name none swap defaults 0 0" \
+        >>/mnt/etc/fstab
+    else
+      info "Adding entry for swap"
+      echo "$swap_dev none swap defaults 0 0" >>/mnt/etc/fstab
+    fi
   fi
 }
 
 add_bootstrap_repo_keys() {
   local gpg_key
 
-  info "Downloading [archzfs] repository key"
+  section "Downloading [archzfs] repository key"
+
   gpg_key="$(mktemp_file)"
   cleanup_file "$gpg_key"
   download "https://archzfs.com/archzfs.gpg" "$gpg_key"
@@ -1062,12 +1441,12 @@ add_bootstrap_override_repo() {
     local local_repo_path
     local_repo_path="$(readlink -f "$base_path/$override_repo")"
 
-    info "Detected [$override_repo] repository to use for bootstrapping"
+    section "Detected [$override_repo] repository to use for bootstrapping"
 
     mkdir -pv "$repo_path"
-    cp -rv "$local_repo_path"/*.pkg.tar.xz* "$repo_path"
+    cp -rv "$local_repo_path"/*.pkg.tar.zst* "$repo_path"
 
-    find "$repo_path" -name '*.pkg.tar.xz' -print0 \
+    find "$repo_path" -name '*.pkg.tar.zst' -print0 \
       | xargs -0 repo-add "$repo_path/$override_repo.db.tar.xz"
 
     info "Adding [$override_repo] repository to /etc/pacman.conf"
@@ -1086,11 +1465,13 @@ install_base() {
   local repo_path="$4"
 
   local extra_pkgs=(
-    zfs-linux
-    intel-ucode grub efibootmgr os-prober
+    zfs-linux zfs-utils
+    linux-firmware intel-ucode amd-ucode grub efibootmgr os-prober
     dhcpcd openssh sudo pacman-contrib
     terminus-font
   )
+
+  section "Installing base system"
 
   info "Bootstrapping base installation with pacstrap"
   pacstrap /mnt base
@@ -1098,6 +1479,11 @@ install_base() {
   add_override_repo \
     "$base_path" "$override_repo" "$repo_path_prefix" "$repo_path"
   add_archzfs_repo
+
+  info "Refreshing package databases"
+  in_chroot "pacman -Sy --noconfirm"
+
+  install_kernel_pkg
 
   info "Installing extra base packages"
   in_chroot "pacman -Sy --noconfirm; pacman -S --noconfirm ${extra_pkgs[*]}"
@@ -1114,11 +1500,40 @@ install_base() {
     die "Installation of zfs-linux failed, check kernel version support"
   fi
 
+  install_be_pkgs
+
   info "Setting sudoers policy"
   in_chroot "echo '%wheel ALL=(ALL) ALL' > /etc/sudoers.d/01_wheel"
 
   info "Remove default .bashrc in /etc/skell"
   in_chroot "rm -f /etc/skel/.bashrc"
+}
+
+install_be_pkgs() {
+  in_chroot "echo 'nobody ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/00_nobody"
+
+  info "Installing Paru as AUR helper"
+  in_chroot <<-EOF
+	set -eu
+	pacman -S --noconfirm --needed base-devel git
+	git clone https://aur.archlinux.org/paru-bin.git /tmp/paru-bin
+	chown -R nobody:nobody /tmp/paru-bin
+	cd /tmp/paru-bin
+	sudo -u nobody makepkg --syncdeps --install --noconfirm
+	cd -
+	rm -rf /tmp/paru-bin
+	EOF
+  info "Installing boot environment manager bieaz & pacman helper rozb3-pac"
+  in_chroot <<-'EOF'
+        export HOME=/tmp/build
+	mkdir -p "$HOME"
+	chown -R nobody:nobody "$HOME"
+	sudo -u nobody env HOME=$HOME \
+	  paru -S --noconfirm --clonedir $HOME bieaz rozb3-pac
+	rm -rf "$HOME"
+	EOF
+
+  in_chroot "rm -f /etc/sudoers.d/00_nobody"
 }
 
 add_override_repo() {
@@ -1149,6 +1564,10 @@ add_override_repo() {
 }
 
 add_archzfs_repo() {
+  info "Fetching latest archzfs repository mirrorlist"
+  mkdir -pv /mnt/etc/pacman.d
+  download "https://git.io/Jsfw2" /mnt/etc/pacman.d/mirrorlist-archzfs
+
   info "Adding [archzfs] repository to /mnt/etc/pacman.conf"
   insert_into_pacman_conf "$(archzfs_repo_block)" /mnt/etc/pacman.conf
 
@@ -1156,17 +1575,68 @@ add_archzfs_repo() {
   in_chroot "pacman-key -r F75D9D76 && pacman-key --lsign-key F75D9D76"
 }
 
+install_kernel_pkg() {
+  local compat_ver current_ver
+
+  info "Determining kernel version compatible with zfs-linux"
+
+  compat_ver="$(
+    in_chroot "pacman -Si zfs-linux \
+      | grep '^Depends On' \
+      | sed 's,.*linux=,,' \
+      | awk '{ print \$1 }'"
+  )"
+  current_ver="$(
+    in_chroot "pacman -Si linux | grep ^Version | awk '{ print \$3 }'"
+  )"
+
+  if [[ "$compat_ver" = "$current_ver" ]]; then
+    info "Installing current kernel version '$current_ver'"
+    in_chroot "pacman -S --noconfirm linux linux-headers"
+  else
+    info "Installing zfs-linux compatible kernel version '$compat_ver'"
+    local url=https://archive.archlinux.org/packages
+    pacstrap -U /mnt \
+      "$url/l/linux/linux-$compat_ver-x86_64.pkg.tar.zst" \
+      "$url/l/linux-headers/linux-headers-$compat_ver-x86_64.pkg.tar.zst"
+  fi
+}
+
 install_hardware_specific_pkgs() {
+  section "Install hardware specific packages"
+
   if is_in_vmware; then
     info "Installing VMware-specific software"
     in_chroot "pacman -S --noconfirm open-vm-tools"
   fi
 }
 
+ignore_kernel_updates() {
+  local base_path="$1"
+  local pkgs=(
+    linux
+    linux-headers
+    zfs-linux
+    zfs-utils
+  )
+
+  section "Ignoring kernel and zfs package updates by default (use upgrade-kernel)"
+
+  info "Installing /usr/bin/upgrade-kernel"
+  cp -v -p "$base_path/lib/upgrade-kernel.sh" /mnt/usr/bin/upgrade-kernel
+
+  info "Setting up pacman.conf to ignore kernel updates"
+  sed -i -e 's/#IgnorePkg/IgnorePkg/' /mnt/etc/pacman.conf
+  sed -i "/^IgnorePkg/ s/$/ ${pkgs[*]}/" /mnt/etc/pacman.conf
+}
+
 setup_zpool_cache() {
   local root_pool="$1"
 
+  section "Setting up zpool cachefile"
+
   info "Clearing zpool cachefile property for root pool '$root_pool'"
+  rm -fv /mnt/etc/zfs/zpool.cache
   in_chroot "zpool set cachefile=none '$root_pool'"
 
   mkdir -pv /mnt/etc/zfs
@@ -1179,138 +1649,224 @@ setup_zpool_cache() {
   in_chroot "zpool set cachefile=/etc/zfs/zpool.cache '$root_pool'"
 }
 
-setup_boot_pool_mounting() {
-  local boot_pool="$1"
+install_encryption_keys() {
+  local encrypt="$1"
+  local tmp_boot_pool_key="$2"
+  local tmp_root_pool_key="$3"
+  local swap="$4"
+  local hibernate="$5"
 
-  info "Creating zfs-import-$boot_pool service unit to import boot pool"
-  cat <<-EOF >"/mnt/etc/systemd/system/zfs-import-${boot_pool}.service"
-	[Unit]
-	Description=Import boot pool $boot_pool
-	DefaultDependencies=no
-	Requires=zfs-mount.service
+  if [[ -z "$encrypt" ]]; then
+    return 0
+  fi
 
-	[Service]
-	Type=oneshot
-	ExecStart=/sbin/zpool import -N -o cachefile=none $boot_pool
+  section "Installing encryption keys"
 
-	[Install]
-	WantedBy=zfs-import.target
-	EOF
+  mkdir -p /mnt/etc/cryptkey.d
+  chmod 0700 /mnt/etc/cryptkey.d
+  info "Installing boot pool key"
+  mv -v \
+    "$tmp_boot_pool_key" \
+    "/mnt/etc/cryptkey.d/$(basename "$tmp_boot_pool_key")"
+  info "Installing root pool key"
+  mv -v \
+    "$tmp_root_pool_key" \
+    "/mnt/etc/cryptkey.d/$(basename "$tmp_root_pool_key")"
+  if [[ -n "$swap" && -n "$hibernate" ]]; then
+    local tmp_swap_key="$6"
 
-  info "Adding fstab entry for /boot filesystem"
-  cat <<-EOF >>/mnt/etc/fstab
-	$boot_pool/BOOT/default	/boot	zfs	nodev,relatime,xattr,posixacl,x-systemd.requires=zfs-mount.service	0 0
-	EOF
+    info "Installing swap key"
+    mv -v \
+      "$tmp_swap_key" \
+      "/mnt/etc/cryptkey.d/$(basename "$tmp_swap_key")"
+  fi
+  chmod u=r,go= /mnt/etc/cryptkey.d/*
+
+  mkdir -p /mnt/etc
+  info "Installing /etc/crypttab"
+  mv -v /tmp/etc/crypttab /mnt/etc/crypttab
+
+  mkdir -p /mnt/etc
+  info "Embedding key files in initrd"
+  echo 'FILES=(/etc/cryptkey.d/* )' >>/mnt/etc/mkinitcpio.conf
 }
 
 set_root_passwd() {
   local root_passwd="$1"
 
-  info "Set initial root password"
+  section "Setting initial root password"
   in_chroot "chpasswd <<< 'root:$root_passwd'"
 }
 
 enable_services() {
   local boot_pool="$1"
-  local services=(
-    zfs.target
-    zfs-import-cache
-    zfs-mount
-    zfs-import.target
-    "zfs-import-$boot_pool"
+  local encrypt="$2"
+
+  section "Enabling services"
+
+  local enable_services=(
     "dhcpcd@${NETIF}.service"
     sshd.service
+    zfs-import-scan.service
+    zfs-import.target
+    zfs-mount
+    zfs-zed
+    zfs.target
   )
   local service
 
-  if is_in_vmware; then
-    services+=(vmtoolsd.service)
+  if [[ -n "$encrypt" ]]; then
+    local base_path="$3"
+    local unit=zfs-import-bpool-mapper.service
+    mkdir -p /mnt/etc/systemd/system
+    info "Installing systemd unit '$unit'"
+    cp -v "$base_path/lib/$unit" "/mnt/etc/systemd/system/$unit"
+    enable_services+=("$unit")
   fi
 
-  for service in "${services[@]}"; do
+  if is_in_vmware; then
+    enable_services+=(vmtoolsd.service)
+  fi
+
+  for service in "${enable_services[@]}"; do
     info "Enabling '$service' service"
-    in_chroot "systemctl enable $service"
+    systemctl enable "$service" --root /mnt
   done
 }
 
 install_grub() {
-  local base_path="$1"
-  local root_pool="$2"
+  local disk_dev="$1"
+  local inst_id="$2"
   local swap_dev="$3"
   local encrypt="$4"
-  local swap_mapper_name="$5"
+  local tmp_swap_key="$5"
+  local swap_mapper_name="$6"
+  local hibernate="$7"
 
-  local root="root=ZFS=$root_pool/ROOT/default"
+  section "Configuring and installing GRUB"
 
-  info "Preparing kernel arguments with GRUB"
+  info "Adding zfs_import_dir entry"
+  local import
+  import="zfs_import_dir=$(dirname "$disk_dev")"
+
   sed -i \
-    -e "s,^\\(GRUB_CMDLINE_LINUX\\)=\"\\(.*\\)\"$,\\1=\"\\2 $root\"," \
+    -e "s,^\\(GRUB_CMDLINE_LINUX\\)=\"\\(.*\\)\"$,\\1=\"\\2 $import\"," \
     /mnt/etc/default/grub
 
-  if [[ -n "$swap_dev" ]]; then
+  if [[ -n "$encrypt" ]]; then
+    info "Enabling cryptdisk support"
+    echo "GRUB_ENABLE_CRYPTODISK=y" >>/mnt/etc/default/grub
+  fi
+
+  if [[ -n "$swap_dev" && -n "$hibernate" ]]; then
+    if [[ -n "$encrypt" ]]; then
+      info "Adding cryptdevice entry"
+      local partuuid
+      partuuid="$(blkid -o export "$swap_dev" | grep ^PARTUUID)"
+      local cryptdevice="cryptdevice=$partuuid:$swap_mapper_name:allow-discards"
+
+      sed -i \
+        -e "s,^\\(GRUB_CMDLINE_LINUX\\)=\"\\(.*\\)\"$,\\1=\"\\2 $cryptdevice\"," \
+        /mnt/etc/default/grub
+
+      info "Adding cryptkey entry"
+      local cryptkey
+      cryptkey="cryptkey=rootfs:/etc/cryptkey.d/$(basename "$tmp_swap_key")"
+
+      sed -i \
+        -e "s,^\\(GRUB_CMDLINE_LINUX\\)=\"\\(.*\\)\"$,\\1=\"\\2 $cryptkey\"," \
+        /mnt/etc/default/grub
+    fi
+
     local resume
     if [[ -n "$encrypt" ]]; then
+      info "Adding resume entry"
       resume="resume=/dev/mapper/$swap_mapper_name"
     else
+      info "Adding resume entry"
       resume="resume=$swap_dev"
     fi
 
     sed -i \
       -e "s,^\\(GRUB_CMDLINE_LINUX\\)=\"\\(.*\\)\"$,\\1=\"\\2 $resume\"," \
       /mnt/etc/default/grub
-
-    if [[ -n "$encrypt" ]]; then
-      local partuuid
-      partuuid="$(blkid -o export "$swap_dev" | grep ^PARTUUID)"
-      local cryptswap="cryptswap=$partuuid:$swap_mapper_name"
-
-      sed -i \
-        -e "s,^\\(GRUB_CMDLINE_LINUX\\)=\"\\(.*\\)\"$,\\1=\"\\2 $cryptswap\"," \
-        /mnt/etc/default/grub
-
-      info "Copying 'cryptswap' hook into /etc/initcpio/hooks"
-      mkdir -pv /mnt/etc/initcpio/hooks
-      cp -v \
-        "$base_path/lib/cryptswap.initcpio.hook" \
-        /mnt/etc/initcpio/hooks/cryptswap
-
-      info "Copying 'cryptswap' hook install into /etc/initcpio/install"
-      mkdir -pv /mnt/etc/initcpio/install
-      cp -v \
-        "$base_path/lib/cryptswap.initcpio.install" \
-        /mnt/etc/initcpio/install/cryptswap
-    fi
   fi
 
-  info "Installing GRUB"
-  in_chroot \
-    "ZPOOL_VDEV_NAME_PATH=1 grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=GRUB"
+  info "Creating GRUB boot directories"
+  mkdir -pv "/mnt/boot/efi/EFI/$inst_id"
+  mkdir -pv "/mnt/boot/grub"
+
+  info "Fixing pool name missing bug when generating grub.cfg"
+  # See: https://wiki.archlinux.org/title/Install_Arch_Linux_on_ZFS
+  local val
+  val="zdb -l \${GRUB_DEVICE} \| grep -E '[[:blank:]]name' \| cut -d\\\' -f 2"
+  sed -i -e "s|rpool=.*|rpool=\`$val\`|" /mnt/etc/grub.d/10_linux
+
+  info "Installing GRUB (legacy)"
+  in_chroot <<-EOF
+	ZPOOL_VDEV_NAME_PATH=1 grub-install \
+	  --boot-directory /boot/efi/EFI/$inst_id \
+	  --target=i386-pc $disk_dev
+	EOF
+
+  info "Installing GRUB (EFI)"
+  local label
+  label="$inst_id-$(basename "$disk_dev")"
+  in_chroot <<-EOF
+	ZPOOL_VDEV_NAME_PATH=1 grub-install \
+	  --boot-directory /boot/efi/EFI/$inst_id \
+	  --efi-directory=/boot/efi/
+	ZPOOL_VDEV_NAME_PATH=1 grub-install \
+	  --boot-directory /boot/efi/EFI/$inst_id \
+	  --efi-directory=/boot/efi/ \
+	  --removable
+	efibootmgr \
+	  --create \
+	  --gpt \
+	  --part 1 \
+	  --loader '\\EFI\\$inst_id\\grubx64.efi' \
+	  --label $label \
+	  --disk $disk_dev
+	EOF
 
   info "Regenerate grub.cfg"
-  in_chroot \
-    "ZPOOL_VDEV_NAME_PATH=1 grub-mkconfig -o /boot/grub/grub.cfg"
+  in_chroot <<-EOF
+	ZPOOL_VDEV_NAME_PATH=1 grub-mkconfig \
+	  -o /boot/efi/EFI/$inst_id/grub/grub.cfg
+	EOF
+  cp -vp "/mnt/boot/efi/EFI/$inst_id/grub/grub.cfg" "/mnt/boot/grub/grub.cfg"
 
   if is_in_dell_xps_13; then
     info "Creating vconsole.conf for larger console font"
     echo "FONT=ter-132n" >/mnt/etc/vconsole.conf
   fi
+}
+
+configure_mkinitcpio() {
+  local swap="$1"
+  local encrypt="$2"
+  local hibernate="$3"
+
+  section "Configuring mkinitcpio"
 
   info "Modifying HOOKS in mkinitcpio.conf"
   local hooks
   hooks=(base udev keyboard autodetect modconf block consolefont)
-  if [[ -n "$swap_dev" ]]; then
+  if [[ -n "$swap" ]]; then
     if [[ -n "$encrypt" ]]; then
       # To decrypt swap on boot and after resuming from hibernate
-      hooks+=(encrypt cryptswap)
+      hooks+=(encrypt)
     fi
-    # Resuming from hibernate
-    hooks+=(resume)
+    if [[ -n "$hibernate" ]]; then
+      # Resuming from hibernate
+      hooks+=(resume)
+    fi
   fi
   hooks+=(zfs filesystems shutdown)
   sed -i "s,^HOOKS=.*,HOOKS=\"${hooks[*]}\",g" /mnt/etc/mkinitcpio.conf
 
   info "Update initial ramdisk (initrd) with ZFS support"
-  in_chroot "mkinitcpio -p linux"
+  in_chroot "mkinitcpio -P"
 }
 
 set_timezone() {
@@ -1318,11 +1874,13 @@ set_timezone() {
 
   # * https://wiki.archlinux.org/index.php/Time
   # * https://wiki.archlinux.org/index.php/Systemd-timesyncd
-  info "Setting up timezone to $tz"
+  section "Setting up timezone to $tz"
   in_chroot "timedatectl set-timezone '$tz'"
 }
 
 setup_clock() {
+  section "Setting up clock"
+
   # If hardware clock is set to local time, like in VMware Fusion
   #
   # * http://www.linuxfromscratch.org/lfs/view/stable-systemd/chapter07/clock.html
@@ -1360,6 +1918,8 @@ generate_locales() {
   local locales=(en_CA.UTF-8 en_US.UTF-8 en_US)
   local default_locale="en_US.UTF-8"
 
+  section "Generating locales"
+
   for l in "${locales[@]}"; do
     # shellcheck disable=SC1117
     sed -i "s|^#\(${l}\)|\1|" /mnt/etc/locale.gen
@@ -1372,25 +1932,33 @@ generate_locales() {
 }
 
 find_fastest_mirrors() {
-  # * https://wiki.archlinux.org/index.php/Mirrors
-  info "Calculating fastest mirrors"
-  cp /mnt/etc/pacman.d/mirrorlist /mnt/etc/pacman.d/mirrorlist.dist
-  curl 'https://www.archlinux.org/mirrorlist/?country=CA&country=US&protocol=http&ip_version=4' -o /mnt/etc/pacman.d/mirrorlist.new
-  sed -i 's/^#Server/Server/' /mnt/etc/pacman.d/mirrorlist.new
-  in_chroot \
-    "rankmirrors -n 6 /etc/pacman.d/mirrorlist.new > /etc/pacman.d/mirrorlist"
-  rm -f /mnt/etc/pacman.d/mirrorlist.new
+  section "Calculating fastest mirrors"
+
+  # * https://ashu.io/blog/arch-zfs-enc/#set-mirrors
+  reflector \
+    --latest 20 \
+    --protocol https \
+    --sort rate \
+    --save /mnt/etc/pacman.d/mirrorlist
   in_chroot "pacman -Syyu --noconfirm"
+}
+
+generate_hostid() {
+  section "Generating /etc/hostid"
+  zgenhostid -f -o /mnt/etc/hostid
 }
 
 copy_create_user_script() {
   local base_path="$1"
   local version="$2"
-  local root_pool="$3"
+  local base_dataset="$3"
 
-  local target="/mnt/root/create-user"
+  section "Installing /root/bin/create-user script"
+
+  local target="/mnt/root/bin/create-user"
 
   info "Preparing 'create-user.sh' script for root user"
+  mkdir -p "$(dirname "$target")"
   cp -p -v "$base_path/lib/create-user.tmpl.sh" "$target"
   {
     echo
@@ -1402,51 +1970,62 @@ copy_create_user_script() {
   } >>"$target"
   sed -i \
     -e "s,@@version@@,${version},g" \
-    -e "s,@@root_pool@@,${root_pool},g" \
+    -e "s,@@base_dataset@@,${base_dataset},g" \
     "$target"
   chmod 0755 "$target"
+}
+
+snapshot_datasets() {
+  local boot_dataset="$1"
+  local root_dataset="$2"
+
+  section "Taking ZFS snapshots of clean installation"
+
+  info "Taking snapshot of '$root_dataset@install'"
+  zfs snapshot -r "$root_dataset@install"
+  info "Taking snapshot of '$boot_dataset@install'"
+  zfs snapshot -r "$boot_dataset@install"
 }
 
 finalize_pools() {
   local boot_pool="$1"
   local root_pool="$2"
-  local swap="$3"
-  local swap_dev="$4"
-  local encrypt="$5"
-  local swap_mapper_name="$6"
+  local inst_id="$3"
+  local swap="$4"
+  local swap_dev="$5"
+  local encrypt="$6"
+  local hibernate="$7"
+  local boot_pool_mapper_name="$8"
+  local swap_mapper_name="$9"
+
+  section "Finalizing ZFS pools"
 
   info "Unmounting /mnt/boot/efi"
   umount /mnt/boot/efi
 
-  if [[ -n "$swap" ]]; then
-    if [[ -n "$encrypt" ]]; then
-      info "Disabling swap on encrypted partition '$swap_mapper_name'"
-      swapoff "/dev/mapper/$swap_mapper_name"
-      sleep 2
-
-      info "Closing encrypted swap '$swap_mapper_name'"
-      cryptsetup close "$swap_mapper_name"
-    else
-      info "Disabling swap on '$swap_dev'"
-      swapoff "$swap_dev"
-    fi
+  if [[ -n "$swap" && -n "$encrypt" && -n "$hibernate" ]]; then
+    info "Closing encrypted swap '$swap_mapper_name'"
+    cryptsetup close "$swap_mapper_name"
   fi
 
   info "Unmounting ZFS datasets"
   zfs unmount -a
-  zfs unmount "$boot_pool/BOOT/default"
-  zfs unmount "$root_pool/ROOT/default"
-
-  info "Setting mounting to legacy for $boot_pool/BOOT/default"
-  zfs set mountpoint=legacy "$boot_pool/BOOT/default"
+  zfs unmount "$boot_pool/$inst_id/BOOT/default"
+  zfs unmount "$root_pool/$inst_id/ROOT/default"
 
   info "Exporting ZFS zpools"
   zpool export "$boot_pool"
   zpool export "$root_pool"
+
+  if [[ -n "$encrypt" ]]; then
+    info "Closing encrypted root '$boot_pool_mapper_name'"
+    cryptsetup close "$boot_pool_mapper_name"
+  fi
 }
 
 finish() {
-  info "Arch Linux with ZFS installer complete, enjoy."
+  section "Finished"
+  info "Arch Linux with ZFS installer complete, reboot into installed system."
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

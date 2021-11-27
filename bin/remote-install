@@ -5,25 +5,26 @@ print_usage() {
   local version="$2"
   local author="$3"
 
-  echo "$program $version
+  cat <<-EOF
+	$program $version
 
-    Arch Linux remote installer.
+	Arch Linux remote installer.
 
-    USAGE:
-        $program [FLAGS] <HOST> <ARGS>...
+	USAGE:
+	    $program [FLAGS] <HOST> <ARGS>...
 
-    FLAGS:
-        -h, --help      Prints this message
-        -v, --verbose   Prints verbose output of the \`install.sh' program
-        -V, --version   Prints version information
+	FLAGS:
+	    -h, --help      Prints this message
+	    -v, --verbose   Prints verbose output of the \`install.sh' program
+	    -V, --version   Prints version information
 
-    ARGS:
-        <ARGS>      Arguments are passed to the \`install.sh' program.
-        <HOST>      Host running the ArchISO live image.
+	ARGS:
+	    <ARGS>      Arguments are passed to the \`install.sh' program.
+	    <HOST>      Host running the ArchISO live image.
 
-    AUTHOR:
-        $author
-    " | sed 's/^ \{1,4\}//g'
+	AUTHOR:
+	    $author
+	EOF
 }
 
 main() {

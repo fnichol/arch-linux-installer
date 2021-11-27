@@ -1,0 +1,21 @@
+# Imports encrypted boot pool from `/dev/mapper`
+#
+# Reference: https://openzfs.github.io/openzfs-docs/Getting%20Started/Arch%20Linux/Root%20on%20ZFS/4-optional-configuration.html
+# Source: https://raw.githubusercontent.com/openzfs/openzfs-docs/master/docs/Getting%20Started/Arch%20Linux/Root%20on%20ZFS/snippets/zfs-import-bpool-mapper.service.txt
+#
+[Unit]
+Description=Import encrypted boot pool
+Documentation=man:zpool(8)
+DefaultDependencies=no
+Requires=systemd-udev-settle.service
+After=cryptsetup.target
+Before=boot.mount
+ConditionPathIsDirectory=/sys/module/zfs
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/zpool import -aNd /dev/mapper
+
+[Install]
+WantedBy=zfs-import.target

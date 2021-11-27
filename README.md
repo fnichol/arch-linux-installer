@@ -250,26 +250,18 @@ reboot
 
 ### ZFS Root Installation Reference Materials
 
+- [OpenZFS: Arch Linux](https://openzfs.github.io/openzfs-docs/Getting%20Started/Arch%20Linux/index.html)
+- [OpenZFS: Arch Linux Root on ZFS](https://openzfs.github.io/openzfs-docs/Getting%20Started/Arch%20Linux/Root%20on%20ZFS/0-overview.html)
+- [Full disk encryption, including /boot: Unlocking LUKS devices from GRUB](https://cryptsetup-team.pages.debian.net/cryptsetup/encrypted-boot.html)
 - [Installing Arch Linux on ZFS](https://wiki.archlinux.org/index.php/Installing_Arch_Linux_on_ZFS)
 - [Arch Linux ZFS](https://wiki.archlinux.org/index.php/ZFS)
 - [Arch Linux Installation Guide](https://wiki.archlinux.org/index.php/Installation_guide)
 - [Arch Linux on ZFS - Part 1: Embed ZFS in Archiso](https://ramsdenj.com/2016/06/23/arch-linux-on-zfs-part-1-embed-zfs-in-archiso.html)
 - [Arch Linux on ZFS - Part 2: Installation](https://ramsdenj.com/2016/06/23/arch-linux-on-zfs-part-2-installation.html)
 - [Installing archlinux with zfs](https://github.com/PositronicBrain/archzfs/blob/master/Install.md)
-
-### Fonts
-
-- [Better Font Rendering In Linux With Infinality](http://www.webupd8.org/2013/06/better-font-rendering-in-linux-with.html)
-- [Install fonts and improve font rendering quality in Arch Linux](https://www.ostechnix.com/install-fonts-improve-font-rendering-quality-arch-linux/)
-- [fontconfig-{infinality}-ultimate](https://github.com/bohoomil/fontconfig-ultimate)
-- [infinality bundle fonts](http://bohoomil.com/)
-- [Infinality](https://wiki.archlinux.org/index.php/Infinality)
-- [Overpass font](http://overpassfont.org/)
-
-### Look-and-Feel
-
-- [i3wm: How To "Rice" Your Desktop](https://www.youtube.com/watch?v=ARKIwOlazKI&t=612s)
-- [Improving my terminal emulator](https://www.mattwall.co.uk/2015/01/31/Improving-my-terminal-emulator.html)
+- [Arch Linux Wiki: dm-crypt/System configuration](https://wiki.archlinux.org/title/Dm-crypt/System_configuration#Boot_loader)
+- [How to change the hash-spec and iter-time of an existing dm-crypt LUKS device?](https://unix.stackexchange.com/questions/101343/how-to-change-the-hash-spec-and-iter-time-of-an-existing-dm-crypt-luks-device)
+- [Install Arch Linux on ZFS with Native ROOT Encryption](https://ashu.io/blog/arch-zfs-enc/)
 
 ### Package Repository Links
 
