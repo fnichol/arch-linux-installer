@@ -243,7 +243,8 @@ main() {
     "$root_pool/$inst_id/DATA/default"
 
   # Prepare bootloader
-  gen_fstab "$esp_dev" "$swap" "$swap_dev" "$encrypt" "$swap_mapper_name"
+  gen_fstab "$esp_dev" "$boot_pool" "$swap" "$swap_dev" \
+    "$encrypt" "$swap_mapper_name"
   install_grub "$disk_dev" "$inst_id" \
     "$swap_dev" "$encrypt" "$tmp_swap_key" "$swap_mapper_name" "$hibernate"
   configure_mkinitcpio "$swap" "$encrypt" "$hibernate"
@@ -1380,16 +1381,19 @@ mount_pools_for_install() {
 
 gen_fstab() {
   local esp_dev="$1"
-  local swap="$2"
+  local boot_pool="$2"
+  local swap="$3"
 
   section "Generating /etc/fstab"
 
-  # info "Using genfstab to generate system /etc/fstab"
-  # mkdir -pv /mnt/etc
-  # genfstab -U /mnt \
-  #   | sed 's;zfs[[:space:]]*;zfs zfsutil,;g' \
-  #   | grep 'zfs zfsutil' \
-  #     >>/mnt/etc/fstab
+  mkdir -pv /mnt/etc
+
+  info "Using genfstab to generate system entries for boot pool '$boot_pool'"
+  genfstab -U /mnt \
+    | sed 's;zfs[[:space:]]*;zfs zfsutil,;g' \
+    | grep 'zfs zfsutil' \
+    | grep "^$boot_pool" \
+      >>/mnt/etc/fstab
 
   local esp_uuid esp_mntops
   esp_uuid="$(blkid -s UUID -o value "$esp_dev")"
