@@ -251,6 +251,7 @@ main() {
 
   # Finalize pools and end installer
   snapshot_datasets "$boot_pool/$inst_id" "$root_pool/$inst_id"
+  create_install_be_unit
   finalize_pools "$boot_pool" "$root_pool" "$inst_id" \
     "$swap" "$swap_dev" "$encrypt" "$hibernate" \
     "$boot_pool_mapper_name" "$swap_mapper_name"
@@ -1983,12 +1984,57 @@ snapshot_datasets() {
   local boot_dataset="$1"
   local root_dataset="$2"
 
-  section "Taking ZFS snapshots of clean installation"
+  section "Taking ZFS snapshots of clean installation, pre-boot"
 
-  info "Taking snapshot of '$root_dataset@install'"
-  zfs snapshot -r "$root_dataset@install"
-  info "Taking snapshot of '$boot_dataset@install'"
-  zfs snapshot -r "$boot_dataset@install"
+  local snap="install-preboot"
+
+  info "Taking snapshot of '$root_dataset@$snap'"
+  zfs snapshot -r "$root_dataset@$snap"
+  info "Taking snapshot of '$boot_dataset@$snap'"
+  zfs snapshot -r "$boot_dataset@$snap"
+}
+
+create_install_be_unit() {
+  section "Creating systemd unit to create post install boot environment"
+
+  local script service unit
+  script="/.create_install_be.sh"
+  service="create-install-be.service"
+  unit="/etc/systemd/system/$service"
+
+  info "Creating $script"
+  cat <<-EOF >>"/mnt$script"
+	#!/bin/bash
+	set -eux
+
+	if bieaz list -H | cut -f1 | grep -q '^install$'; then
+	  echo "boot environment already created, skipping..."
+	else
+	  bieaz create "install"
+	  bieaz label "install" "post install/pre boot"
+	fi
+
+	systemctl disable "$service"
+	rm -f "$unit" "$script"
+	EOF
+  chmod 755 "/mnt$script"
+
+  info "Creating $unit"
+  mkdir -pv "/mnt$(dirname "$unit")"
+  cat <<-EOF >>"/mnt$unit"
+	[Unit]
+	Description=Create install boot environment
+
+	[Service]
+	Type=simple
+	ExecStart=$script
+
+	[Install]
+	WantedBy=multi-user.target
+	EOF
+
+  info "Enabling $service"
+  systemctl enable "$service" --root /mnt
 }
 
 finalize_pools() {
