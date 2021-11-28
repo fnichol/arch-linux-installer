@@ -219,8 +219,6 @@ main() {
   install_hardware_specific_pkgs
   ignore_kernel_updates "$base_path"
   setup_zpool_cache "$root_pool"
-  install_encryption_keys "$encrypt" "$tmp_boot_pool_key" "$tmp_root_pool_key" \
-    "$swap" "$hibernate" "$tmp_swap_key"
 
   # Swap
   encrypt_swap "$swap" "$swap_dev" "$encrypt" "$hibernate" \
@@ -247,6 +245,9 @@ main() {
     "$encrypt" "$swap_mapper_name"
   install_grub "$disk_dev" "$inst_id" \
     "$swap_dev" "$encrypt" "$tmp_swap_key" "$swap_mapper_name" "$hibernate"
+  install_encryption_keys "$encrypt" "$tmp_boot_pool_key" "$tmp_root_pool_key" \
+    "$swap" "$hibernate" "$tmp_swap_key"
+  unset tmp_boot_pool_key tmp_root_pool_key tmp_swap_key
   configure_mkinitcpio "$swap" "$encrypt" "$hibernate"
 
   # Finalize pools and end installer
@@ -1059,7 +1060,7 @@ encrypt_swap() {
       section "Configuring an ephemeral encrypted swap on '$swap_mapper_name'"
       local opts
       opts="swap,cipher=aes-cbc-essiv:sha256,size=256,discard"
-      echo "$swap_mapper_name $swap_dev /dev/urandom $opts" >>/mnt/etc/crypttab
+      echo "$swap_mapper_name $swap_dev /dev/urandom $opts" >>/tmp/etc/crypttab
     fi
 
     SWAP_MAPPER_NAME="$swap_mapper_name"
@@ -1069,13 +1070,20 @@ encrypt_swap() {
 format_swap() {
   local swap="$1"
   local hibernate="$2"
+  local swap_dev="$3"
+  local encrypt="$4"
 
-  if [[ -z "$swap" || -n "$hibernate" ]]; then
+  # If not swapping, skip
+  if [[ -z "$swap" ]]; then
+    return
+  fi
+  # If we're swapping, encrypting, but not hibernating, then swap is
+  # dynamically re-encrypted and prepared on each boot, so we skip this step
+  # too
+  if [[ -n "$swap" && -n "$encrypt" && -z "$hibernate" ]]; then
     return
   fi
 
-  local swap_dev="$3"
-  local encrypt="$4"
   local swap_mapper_name="$5"
 
   local device
@@ -1406,11 +1414,11 @@ gen_fstab() {
   echo "UUID=$esp_uuid /boot/efi vfat $esp_mntops 0 1" >>/mnt/etc/fstab
 
   if [[ -n "$swap" ]]; then
-    local swap_dev="$3"
-    local encrypt="$4"
+    local swap_dev="$4"
+    local encrypt="$5"
 
     if [[ -n "$encrypt" ]]; then
-      local swap_mapper_name="$5"
+      local swap_mapper_name="$6"
 
       info "Adding entry for encrypted swap"
       echo "/dev/mapper/$swap_mapper_name none swap defaults 0 0" \
