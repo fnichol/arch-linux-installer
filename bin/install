@@ -252,7 +252,7 @@ main() {
 
   # Finalize pools and end installer
   snapshot_datasets "$boot_pool/$inst_id" "$root_pool/$inst_id"
-  create_install_be_unit
+  create_install_be_unit "$root_pool/$inst_id"
   finalize_pools "$boot_pool" "$root_pool" "$inst_id" \
     "$swap" "$swap_dev" "$encrypt" "$hibernate" \
     "$boot_pool_mapper_name" "$swap_mapper_name"
@@ -1994,7 +1994,7 @@ snapshot_datasets() {
 
   section "Taking ZFS snapshots of clean installation, pre-boot"
 
-  local snap="install-preboot"
+  local snap="install"
 
   info "Taking snapshot of '$root_dataset@$snap'"
   zfs snapshot -r "$root_dataset@$snap"
@@ -2003,9 +2003,12 @@ snapshot_datasets() {
 }
 
 create_install_be_unit() {
+  local base_dataset="$1"
+
   section "Creating systemd unit to create post install boot environment"
 
-  local script service unit
+  local snap script service unit
+  snap="install"
   script="/.create_install_be.sh"
   service="create-install-be.service"
   unit="/etc/systemd/system/$service"
@@ -2018,8 +2021,9 @@ create_install_be_unit() {
 	if bieaz list -H | cut -f1 | grep -q '^install$'; then
 	  echo "boot environment already created, skipping..."
 	else
-	  bieaz create "install"
-	  bieaz label "install" "post install/pre boot"
+	  zfs set org.bieaz:be.src=default "$base_dataset/ROOT/default@$snap"
+	  bieaz create "default@$snap" install
+	  bieaz label install "post install/pre boot"
 	fi
 
 	systemctl disable "$service"
