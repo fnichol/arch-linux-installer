@@ -25,28 +25,42 @@ USAGE:
     install [FLAGS] [OPTIONS] <DISK> <NETIF>
 
 FLAGS:
-    -e, --encrypt   Encrypts the partition for the zpool (default: no)
-    -h, --help      Prints help information
-    -s, --swap      Include a swap partition (default: no)
-    -V, --version   Prints version information
+    -e, --encrypt     Encrypts the partition for the zpool
+                      (default: no)
+    -h, --help        Prints help information
+    -I, --hibernation Enables hibernation/resume (WARNING: experimental!)
+                      (default: no)
+    -S, --suffix      Appends a unique suffix to zpool names
+    -V, --version     Prints version information
+    -W, --no-swap     Do not include a swap partition
+                      (default: create swap)
 
 OPTIONS:
     -b, --boot-part=<PART>      Choose a boot partition for type partition
                                 (ex: nvme0n1p3)
     -E, --encrypt-pass=<FILE>   Read the root pool password from file
                                 (default: prompt)
+    -l, --legacy-part=<PART>    Choose a legacy BIOS boot partition for
+                                type partition (ex: nvme0n1p5)
     -p, --partition=<TYPE>      Choose a partitioning type (default: whole)
                                 (values: existing, remaining, whole)
     -P, --root-pass=<FILE>      Read initial root password from file
                                 (default: prompt)
     -r, --root-part=<PART>      Choose a root partition for type partition
                                 (ex: nvme0n1p4)
-    -S, --swap-part=<PART>      Choose a swap partition for type partition
+    -s, --swap-part=<PART>      Choose a swap partition for type partition
                                 (ex: nvme0n1p2)
     -t, --timezone=<TZ>         Timezone (ex: `America/Edmonton')
                                 (default: `UTC')
-    -W, --swap-pass=<FILE>      Read the swap partition password from file
-                                (default: prompt)
+        --bpool-size=<SIZE>     Size for boot pool partition, using sgdisk
+                                sizes (default: 4G)
+        --esp-size=<SIZE>       Size for ESP partition if using whole
+                                partitioning type, using sgdisk sizes
+                                (default: 4G)
+        --rpool-size=<SIZE>     Size for root pool partition, using sgdisk
+                                sizes (default: empty, uses all remaining)
+        --swap-size=<SIZE>      Size for swap partition if enabled, using
+                                sgdisk sizes (default: size of RAM)
 
 ARGS:
     <DISK>      The disk to use for installation (ex: `nvme0n1')
@@ -57,25 +71,25 @@ ARGS:
 EXAMPLES:
     Example 1 Installing with default behavior
       The following command installs Arch Linux using the whole disk,
-      without a swap partition, without encryption, and a timezone of
+      with a swap partition, without encryption, and a timezone of
       `UTC'.
 
-      # install /dev/nvme0n1 ens33
+      # install nvme0n1 ens33
 
     Example 2
       The following command installs Arch Linux using the whole disk,
-      with a swap partition, with root pool encryption, and a timezone of
-      Mountain time in North America.
+      without a swap partition, with root pool encryption, and a
+              timezone of Mountain time in North America.
 
-      # install --encrypt --swap -timezone=America/Edmonton \
-        /dev/nvme0n1 ens33
+      # install --encrypt --no-swap -timezone=America/Edmonton \
+        nvme0n1 ens33
 
     Example 3
       The following command installs Arch Linux using the remaining space
       on the disk, with a swap partition, without encryption, and a
       timezone of `UTC'.
 
-      # install --partition=remaining --swap /dev/nvme0n1 ens33
+      # install --partition=remaining nvme0n1 ens33
 
 AUTHOR:
     Fletcher Nichol <fnichol@nichol.ca>
