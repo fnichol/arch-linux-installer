@@ -1126,41 +1126,32 @@ create_boot_zpool() {
     boot_pool_mapper_name="$disk_name-$disk_guid-$partnum-luks-$boot_pool"
 
     info "Formatting and encrypting a boot pool device '$boot_pool_mapper_name'"
-    # Format the partition, use the password to set slot 0
-    echo "$boot_pool_passwd" \
-      | cryptsetup luksFormat \
-        --batch-mode \
-        --type luks1 \
-        "$boot_pool_dev"
+    cryptsetup luksFormat \
+      --batch-mode \
+      --type luks2 \
+      --key-slot 2 \
+      --key-file "$tmp_boot_pool_key" \
+      "$boot_pool_dev"
 
     # Determine the interations and lower this number to something like 5% to
     # make decrypting faster--warning this also makes brute force attacking of
     # this password 20x faster!
+    info "Determining luks iterations"
     iters="$(
-      cryptsetup luksDump /dev/nvme0n1p2 \
+      cryptsetup luksDump "$boot_pool_dev" \
         | grep Iterations: \
         | head -n 1 \
-        | awk '{ print ($NF * 0.05) }'
+        | awk '{ print int($NF * 0.05) }'
     )"
 
-    # Add the key file into slot 2, using the lower iterations value--this
+    # Add the passphrase into slot 0, using the lower iterations value--this
     # leaves slot 1 open for an admin user password, yubi key, etc.
+    info "Adding passphrase into boot device slot 0 with iterations=$iters"
     echo "$boot_pool_passwd" \
       | cryptsetup luksAddKey \
+        --pbkdf pbkdf2 \
         --pbkdf-force-iterations "$iters" \
-        --key-slot 2 \
-        "$boot_pool_dev" \
-        "$tmp_boot_pool_key"
-
-    # Remove the password in slot 0
-    echo "$boot_pool_passwd" \
-      | cryptsetup luksRemoveKey \
-        "$boot_pool_dev"
-    # Re-add the password into slot 0, but this time with the lower iterations
-    # value
-    echo "$boot_pool_passwd" \
-      | cryptsetup luksAddKey \
-        --pbkdf-force-iterations "$iters" \
+        --key-slot 0 \
         --key-file "$tmp_boot_pool_key" \
         "$boot_pool_dev"
 
@@ -1814,6 +1805,26 @@ install_grub() {
   local val
   val="zdb -l \${GRUB_DEVICE} \| grep -E '[[:blank:]]name' \| cut -d\\\' -f 2"
   sed -i -e "s|rpool=.*|rpool=\`$val\`|" /mnt/etc/grub.d/10_linux
+
+  if [[ -n "$encrypt" ]]; then
+    info "Adding GRUB config to support decrypting all LUKS containers at boot"
+    # This script echos out commands to run, hence this block of code looking
+    # like a nested heredoc
+    local grub_cfg=/mnt/etc/grub.d/09_bpool_luks2-decryption
+    cat <<-'GRUB' >>"$grub_cfg"
+	#!/bin/sh
+	cat <<-EOF
+		insmod luks2
+		insmod pbkdf2
+		insmod part_gpt
+		insmod gcry_rijndael
+		insmod gcry_sha256
+		insmod cryptodisk
+		cryptomount hd0,gpt2
+	EOF
+	GRUB
+    chmod +x "$grub_cfg"
+  fi
 
   info "Installing GRUB (legacy)"
   in_chroot <<-EOF
