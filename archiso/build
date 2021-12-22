@@ -125,7 +125,7 @@ add_zfs_repo() {
 
   info "Fetching latest archzfs repository mirrorlist"
   mkdir -pv "$workdir/etc/pacman.d"
-  download "https://git.io/Jsfw2" "$workdir/etc/pacman.d/mirrorlist-archzfs"
+  download "https://git.io/Jsfw2" "/etc/pacman.d/mirrorlist-archzfs"
 
   info "Adding [archzfs] repository to $workdir/pacman.conf"
   insert_into_pacman_conf "$(archzfs_repo_block)" "$workdir/pacman.conf"
