@@ -26,20 +26,19 @@ main() {
     pacman -Si "$running_kernel" | grep ^Version | awk '{ print $3 }'
   )"
 
+  section "Upgrading kernel"
+
   if [ "$current_kernel_version" = "$compat_kernel_version" ]; then
-    echo "  - Compatible versions of $running_kernel and zfs-$running_kernel"
-    set -x
-    exec pacman -Sy --needed --noconfirm "$@" \
+    info "Compatible versions of $running_kernel and zfs-$running_kernel"
+    indent pacman -Sy --needed --noconfirm "$@" \
       "$running_kernel" \
       "$running_kernel-headers" \
       "zfs-$running_kernel" \
       zfs-utils
   else
-    echo "  - Incompatible versions of $running_kernel and zfs-$running_kernel"
+    info "Incompatible versions of $running_kernel and zfs-$running_kernel"
     printf "        %-20s : %s\n" "$running_kernel" "$current_kernel_version"
     printf "        %-20s : %s\n" "zfs-$running_kernel" "$compat_kernel_version"
-    echo "  - Skipping kernel package upgrade"
+    info "Skipping kernel package upgrade"
   fi
 }
-
-main "$@" || exit 99

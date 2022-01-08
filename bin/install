@@ -1623,11 +1623,19 @@ ignore_kernel_updates() {
     zfs-linux
     zfs-utils
   )
+  local target=/mnt/usr/bin/upgrade-kernel
 
   section "Ignoring kernel and zfs package updates by default (use upgrade-kernel)"
 
   info "Installing /usr/bin/upgrade-kernel"
-  cp -v -p "$base_path/lib/upgrade-kernel.sh" /mnt/usr/bin/upgrade-kernel
+  cp -v -p "$base_path/lib/upgrade-kernel.tmpl.sh" "$target"
+  {
+    echo
+    cat "$base_path/vendor/lib/libsh.full.sh"
+    echo
+    echo 'main "$@"'
+  } >>"$target"
+  chmod 0755 "$target"
 
   info "Setting up pacman.conf to ignore kernel updates"
   sed -i -e 's/#IgnorePkg/IgnorePkg/' /mnt/etc/pacman.conf
