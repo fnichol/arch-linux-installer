@@ -47,6 +47,8 @@ run() {
     --rm
     --tty
     --interactive
+    --platform
+    linux/amd64
     --privileged
     --volume
     "$cwd:$mount_dir"
