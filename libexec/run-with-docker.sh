@@ -16,7 +16,7 @@ main() {
 
   if ! image_exists "$image"; then
     pushd "${0%/*}/../libexec/docker" >/dev/null
-    docker build -t "$image" .
+    docker build --platform linux/amd64 --tag "$image" .
     popd >/dev/null
   fi
 
