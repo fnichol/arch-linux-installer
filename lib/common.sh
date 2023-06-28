@@ -68,14 +68,18 @@ archzfs_repo_block() {
 
   # Read complex, interpolated string into a $content variable using leading
   # full tab indentation syntax
-  read -r -d '' content <<-CONTENT
+  read -r -d '' content <<-'CONTENT'
 	# ZFS on Arch Linux support repo
 	#
 	# For more information:
 	# * https://github.com/archzfs/archzfs/wiki
 	#
 	[archzfs]
-	Include = /etc/pacman.d/mirrorlist-archzfs
+	Server = http://archzfs.com/$repo/$arch
+	Server = http://mirror.sum7.eu/archlinux/archzfs/$repo/$arch
+	Server = https://mirror.biocrafting.net/archlinux/archzfs/$repo/$arch
+	Server = https://mirror.in.themindsmaze.com/archzfs/$repo/$arch
+	Server = https://zxcvfdsa.com/archzfs/$repo/$arch
 	CONTENT
 
   echo "$content"

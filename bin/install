@@ -1568,10 +1568,6 @@ add_override_repo() {
 }
 
 add_archzfs_repo() {
-  info "Fetching latest archzfs repository mirrorlist"
-  mkdir -pv /mnt/etc/pacman.d
-  download "https://git.io/Jsfw2" /mnt/etc/pacman.d/mirrorlist-archzfs
-
   info "Adding [archzfs] repository to /mnt/etc/pacman.conf"
   insert_into_pacman_conf "$(archzfs_repo_block)" /mnt/etc/pacman.conf
 
