@@ -121,19 +121,15 @@ add_override_repo() {
 
 add_zfs_repo() {
   local workdir="$1"
-  local gpg_key
 
   info "Adding [archzfs] repository to $workdir/pacman.conf"
   insert_into_pacman_conf "$(archzfs_repo_block)" "$workdir/pacman.conf"
 
   info "Downloading [archzfs] repository key"
-  gpg_key="$(mktemp_file)"
-  cleanup_file "$gpg_key"
-  download "https://archzfs.com/archzfs.gpg" "$gpg_key"
-  pacman-key -a "$gpg_key"
+  pacman-key --recv-keys 3A9917BF0DED5C13F69AC68FABEC0A1208037BE9
 
   info "Importing [archzfs] repository key"
-  pacman-key --lsign-key DDF7DB817396A49B2A2723F7403BD972F75D9D76
+  pacman-key --lsign-key 3A9917BF0DED5C13F69AC68FABEC0A1208037BE9
 }
 
 add_zfs_package() {

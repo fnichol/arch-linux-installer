@@ -1571,8 +1571,11 @@ add_archzfs_repo() {
   info "Adding [archzfs] repository to /mnt/etc/pacman.conf"
   insert_into_pacman_conf "$(archzfs_repo_block)" /mnt/etc/pacman.conf
 
-  info "Adding [archzfs] repository key"
-  in_chroot "pacman-key -r F75D9D76 && pacman-key --lsign-key F75D9D76"
+  info "Downloading & importing [archzfs] repository key"
+  in_chroot <<-EOF
+	pacman-key --recv-keys 3A9917BF0DED5C13F69AC68FABEC0A1208037BE9
+	pacman-key --lsign-key 3A9917BF0DED5C13F69AC68FABEC0A1208037BE9
+	EOF
 }
 
 install_kernel_pkg() {
